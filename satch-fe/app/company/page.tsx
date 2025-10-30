@@ -1,15 +1,20 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useWallet } from "@solana/wallet-adapter-react";
+import { usePrivy, useWallets } from '@privy-io/react-auth';
 import { PublicKey, SystemProgram, Transaction, TransactionInstruction } from "@solana/web3.js";
 import { findPlatformPda, findDriverPda, findLicensePlatePda, getConnection, PROGRAM_ID } from "@/lib/solana";
 import { BorshCoder, Idl } from "@coral-xyz/anchor";
 import idl from "@/lib/idl/satch.json" assert { type: "json" };
 import { useRouter } from "next/navigation";
+import Header from "@/components/header";
 
 export default function CompanyPage() {
-  const wallet = useWallet();
+  const { ready, authenticated, login, logout } = usePrivy();
+  const { wallets } = useWallets();
+  const solanaWallets = wallets.filter(w => w.chainType === 'solana');
+  const selectedWallet = solanaWallets.find(w => w.walletClientType === 'privy') || solanaWallets[0];
+  
   const router = useRouter();
   const [platform, setPlatform] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
@@ -27,15 +32,16 @@ export default function CompanyPage() {
 
   useEffect(() => {
     async function loadPlatform() {
-      if (!wallet.publicKey) {
+      if (!authenticated || !selectedWallet) {
         setLoading(false);
         return;
       }
-
+      const walletAddress = selectedWallet.address;
+      
       try {
         const connection = getConnection();
         const coder = new BorshCoder(idl as Idl);
-        const platformPda = findPlatformPda(wallet.publicKey);
+        const platformPda = findPlatformPda(new PublicKey(walletAddress));
         
         const platformInfo = await connection.getAccountInfo(platformPda);
         if (!platformInfo || !platformInfo.data || !platformInfo.owner.equals(PROGRAM_ID)) {
@@ -52,46 +58,43 @@ export default function CompanyPage() {
       }
     }
 
-    loadPlatform();
-  }, [wallet.publicKey]);
+    if (ready) {
+      loadPlatform();
+    }
+  }, [ready, authenticated, selectedWallet]);
 
   const handleRegisterCompany = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!wallet.publicKey || !wallet.signTransaction) {
+    if (!authenticated || !selectedWallet) {
       alert("Please connect your wallet");
       return;
     }
+    const walletAddress = selectedWallet.address;
 
     try {
       setIsRegistering(true);
       const connection = getConnection();
       const coder = new BorshCoder(idl as Idl);
-      const platformPda = findPlatformPda(wallet.publicKey);
+      const platformPda = findPlatformPda(new PublicKey(walletAddress));
 
       const ix = new TransactionInstruction({
         programId: PROGRAM_ID,
         keys: [
           { pubkey: platformPda, isSigner: false, isWritable: true },
-          { pubkey: wallet.publicKey, isSigner: true, isWritable: true },
+          { pubkey: new PublicKey(walletAddress), isSigner: true, isWritable: true },
           { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
         ],
         data: coder.instruction.encode("register_platform", { name: companyName }),
       });
 
       const tx = new Transaction().add(ix);
-      tx.feePayer = wallet.publicKey;
+      tx.feePayer = new PublicKey(walletAddress);
       const { blockhash } = await connection.getLatestBlockhash();
       tx.recentBlockhash = blockhash;
 
-      let txSig: string;
-      if (wallet.sendTransaction) {
-        txSig = await wallet.sendTransaction(tx, connection);
-      } else if (wallet.signTransaction) {
-        const signed = await wallet.signTransaction(tx);
-        txSig = await connection.sendRawTransaction(signed.serialize());
-      } else {
-        throw new Error("Wallet cannot sign or send transactions");
-      }
+      const signedTx = await selectedWallet.signTransaction(tx)
+      const txSig = await connection.sendRawTransaction(signedTx.serialize());
+
 
       alert(`Company registered successfully! Transaction: ${txSig}`);
       
@@ -112,10 +115,11 @@ export default function CompanyPage() {
 
   const handleAddDriver = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!wallet.publicKey || !wallet.signTransaction) {
+    if (!authenticated || !selectedWallet) {
       alert("Please connect your wallet");
       return;
     }
+    const walletAddress = selectedWallet.address;
 
     if (!platform) {
       alert("Please register your company first");
@@ -130,7 +134,7 @@ export default function CompanyPage() {
       const driverAuthority = new PublicKey(driverWallet);
       const driverPda = findDriverPda(driverAuthority);
       const platePda = findLicensePlatePda(licensePlate);
-      const platformPda = findPlatformPda(wallet.publicKey);
+      const platformPda = findPlatformPda(new PublicKey(walletAddress));
 
       const ix = new TransactionInstruction({
         programId: PROGRAM_ID,
@@ -139,7 +143,7 @@ export default function CompanyPage() {
           { pubkey: platePda, isSigner: false, isWritable: true },
           { pubkey: driverAuthority, isSigner: false, isWritable: false },
           { pubkey: platformPda, isSigner: false, isWritable: true },
-          { pubkey: wallet.publicKey, isSigner: true, isWritable: true },
+          { pubkey: new PublicKey(walletAddress), isSigner: true, isWritable: true },
           { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
         ],
         data: coder.instruction.encode("register_driver", { 
@@ -149,19 +153,12 @@ export default function CompanyPage() {
       });
 
       const tx = new Transaction().add(ix);
-      tx.feePayer = wallet.publicKey;
+      tx.feePayer = new PublicKey(walletAddress);
       const { blockhash } = await connection.getLatestBlockhash();
       tx.recentBlockhash = blockhash;
 
-      let txSig: string;
-      if (wallet.sendTransaction) {
-        txSig = await wallet.sendTransaction(tx, connection);
-      } else if (wallet.signTransaction) {
-        const signed = await wallet.signTransaction(tx);
-        txSig = await connection.sendRawTransaction(signed.serialize());
-      } else {
-        throw new Error("Wallet cannot sign or send transactions");
-      }
+      const signedTx = await selectedWallet.signTransaction(tx);
+      const txSig = await connection.sendRawTransaction(signedTx.serialize());
 
       alert(`Driver registered successfully! Transaction: ${txSig}\nLicense Plate: ${licensePlate}`);
       
@@ -184,7 +181,7 @@ export default function CompanyPage() {
     }
   };
 
-  if (loading) {
+  if (!ready || loading) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center">
         <p className="font-mono text-sm">Loading...</p>
@@ -194,43 +191,8 @@ export default function CompanyPage() {
 
   return (
     <main className="min-h-screen bg-white text-black">
-      {/* Header */}
-      <div className="border-b-2 border-black">
-        <div className="max-w-4xl mx-auto px-4 py-6">
-          <div className="flex items-center justify-between mb-4">
-            <h1 className="font-press-start text-2xl md:text-3xl font-bold">COMPANY PORTAL</h1>
-            <button
-              onClick={() => router.push("/")}
-              className="border-2 border-black px-4 py-2 font-mono text-xs hover:bg-gray-100"
-            >
-              BACK TO HOME
-            </button>
-          </div>
-          
-          {wallet.connected ? (
-            <div className="flex items-center justify-between">
-              <div className="font-mono text-xs">
-                Connected: <span className="font-bold">{wallet.publicKey?.toBase58()}</span>
-              </div>
-              <button
-                onClick={() => wallet.disconnect()}
-                className="border-2 border-black px-4 py-2 font-mono text-xs hover:bg-gray-100"
-              >
-                DISCONNECT
-              </button>
-            </div>
-          ) : (
-            <button
-              onClick={() => wallet.connect()}
-              className="w-full bg-yellow-300 text-black px-6 py-3 font-mono font-bold text-sm tracking-widest border-2 border-black hover:bg-yellow-400"
-            >
-              CONNECT WALLET
-            </button>
-          )}
-        </div>
-      </div>
-
-      {wallet.connected && (
+      <Header />
+      {authenticated && selectedWallet && (
         <div className="max-w-4xl mx-auto px-4 py-8">
           {!platform ? (
             // Company Registration Form
@@ -330,7 +292,7 @@ export default function CompanyPage() {
         </div>
       )}
 
-      {!wallet.connected && (
+      {!authenticated && (
         <div className="max-w-4xl mx-auto px-4 py-8 text-center">
           <p className="font-mono text-sm text-gray-600">
             Please connect your wallet to register your company and manage drivers.

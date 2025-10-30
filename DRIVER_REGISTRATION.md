@@ -1,243 +1,307 @@
-# Driver Registration Flow & Privy Integration
+# 🚘 Driver Registration Flow & Privy Integration
+
+*(Updated for latest Privy React SDK + Solana RPC Config)*
+
+---
 
 ## Overview
 
-This document describes the updated driver registration flow and considerations for integrating Privy for easier driver onboarding.
+This document outlines the **driver registration flow** for the Satch protocol and details how to integrate **Privy** for seamless, secure onboarding using **social login + embedded Solana wallets**, now including **custom Solana network configuration**.
+
+---
 
 ## Current Implementation
 
-### Smart Contract Changes
+### Smart Contract Overview
 
-The Satch protocol now includes on-chain license plate mapping:
+The Satch protocol supports **on-chain license plate mapping**:
 
-1. **DriverProfile** - Extended with `license_plate` field
-2. **LicensePlateMapping** - New account type that maps license plates to driver PDAs
-3. **PDA Structure**:
-   - Platform PDA: `["platform", authority_pubkey]`
-   - Driver PDA: `["driver", driver_authority_pubkey]`
-   - License Plate PDA: `["plate", license_plate_string]`
+* **DriverProfile** – extended with `license_plate`
+* **LicensePlateMapping** – maps license plates to driver PDAs
+* **PDA Hierarchy**:
 
-### Frontend Implementation
+  * Platform PDA: `["platform", authority_pubkey]`
+  * Driver PDA: `["driver", driver_authority_pubkey]`
+  * License Plate PDA: `["plate", license_plate_string]`
 
-1. **Company Portal** (`/company`)
-   - Companies can register their platform account
-   - Companies can add drivers with:
-     - Driver name
-     - License plate number
-     - Driver's Solana wallet address
-   - View company statistics (driver count, verification status)
+---
 
-2. **Driver Lookup** (Updated `/api/driver/[id]`)
-   - No longer uses hardcoded mappings
-   - Queries on-chain LicensePlateMapping PDA
-   - Returns driver information directly from blockchain
+## Frontend Overview
 
-3. **Home Page** 
-   - Added link to Company Portal
-   - Search functionality remains unchanged
+### Company Portal (`/company`)
 
-## Privy Integration Considerations
+* Companies register platform accounts
+* Add drivers with name, license plate, wallet address
+* View driver stats, verification status
 
-[Privy](https://www.privy.io/) is a wallet and authentication solution that can simplify driver onboarding by allowing users to sign in with familiar methods (Google, email, etc.) while automatically creating a Solana wallet.
+### Driver Lookup (`/api/driver/[id]`)
 
-### Benefits
+* Fetches from on-chain LicensePlateMapping PDA
+* Displays verified driver info
 
-1. **Easier Onboarding**
-   - Drivers don't need to understand crypto wallets
-   - Can sign in with Google, Twitter, email, etc.
-   - Privy handles wallet creation in the background
+### Home Page
 
-2. **Better UX**
-   - Familiar social login experience
-   - No need to download browser extensions
-   - Works on mobile devices
+* Added link to Company Portal
+* License plate search unchanged
 
-3. **Recovery Options**
-   - Social recovery mechanisms
-   - No risk of losing seed phrases
+---
 
-### Implementation Plan
+## Privy Integration
 
-#### 1. Install Privy SDK
+[Privy](https://www.privy.io/) provides **wallet + auth in one SDK** — allowing drivers to log in via Google, Twitter, or email and auto-generate Solana wallets in the background.
+
+### 🔥 Benefits
+
+* **1-click onboarding** (no wallet setup)
+* **Social login UX**
+* **Embedded wallets** for new users
+* **Recovery options** (no lost keys)
+* **Web + mobile ready**
+
+---
+
+## Implementation Plan
+
+### 1. Install SDK
 
 ```bash
-npm install @privy-io/react-auth @privy-io/react-auth-solana
+pnpm install @privy-io/react-auth
 ```
 
-#### 2. Update `solana-providers.tsx`
+---
 
-Replace or wrap the existing wallet adapter with Privy:
+### 2. Wrap App with `PrivyProvider`
+
+In `app/providers.tsx`:
 
 ```tsx
-import { PrivyProvider } from '@privy-io/react-auth';
-import { PrivySolanaProvider } from '@privy-io/react-auth-solana';
+'use client';
 
-export default function SolanaProviders({ children }: { children: React.ReactNode }) {
+import { PrivyProvider } from '@privy-io/react-auth';
+import { createSolanaRpc, createSolanaRpcSubscriptions } from '@privy-io/react-auth/solana';
+
+export default function Providers({ children }: { children: React.ReactNode }) {
   return (
     <PrivyProvider
       appId={process.env.NEXT_PUBLIC_PRIVY_APP_ID!}
+      clientId={process.env.NEXT_PUBLIC_PRIVY_CLIENT_ID!}
       config={{
         loginMethods: ['google', 'twitter', 'email'],
+        embeddedWallets: {
+          ethereum: {
+            createOnLogin: 'users-without-wallets',
+          },
+        },
         appearance: {
           theme: 'light',
-          accentColor: '#FDE047', // yellow-300 to match your design
+          accentColor: '#FDE047',
         },
-        embeddedWallets: {
-          createOnLogin: 'users-without-wallets',
+        // ✅ Configure Solana RPCs for embedded wallets
+        solana: {
+          rpcs: {
+            'solana:mainnet': {
+              rpc: createSolanaRpc('https://api.mainnet-beta.solana.com'),
+              rpcSubscriptions: createSolanaRpcSubscriptions('wss://api.mainnet-beta.solana.com'),
+            },
+            'solana:devnet': {
+              rpc: createSolanaRpc('https://normals-solanad-6ba0.devnet.rpcpool.com/aeafc746-238d-4bea-af16-6b69e62a4eab'),
+              rpcSubscriptions: createSolanaRpcSubscriptions('wss://normals-solanad-6ba0.devnet.rpcpool.com/aeafc746-238d-4bea-af16-6b69e62a4eab'),
+            },
+          },
         },
       }}
     >
-      <PrivySolanaProvider>
-        {children}
-      </PrivySolanaProvider>
+      {children}
     </PrivyProvider>
   );
 }
 ```
 
-#### 3. Update Company Portal
+🧠 **Notes:**
 
-Replace `useWallet()` with `usePrivy()` and `useWallets()`:
+* You no longer need a `PrivySolanaProvider`.
+* `config.solana.rpcs` is **only required** for embedded wallets.
+* If using external wallets (Phantom, Solflare, etc.), this config isn’t needed.
+
+---
+
+### 3. Wait for Privy Initialization
+
+Before accessing state or wallets, ensure Privy is ready:
+
+```tsx
+import { usePrivy } from '@privy-io/react-auth';
+
+export default function AppInit() {
+  const { ready } = usePrivy();
+
+  if (!ready) return <div>Loading...</div>;
+  return <div>Privy is ready!</div>;
+}
+```
+
+---
+
+### 4. Update Company Portal Auth Flow
+
+Replace `useWallet()` with Privy hooks:
 
 ```tsx
 import { usePrivy, useWallets } from '@privy-io/react-auth';
 
-export default function CompanyPage() {
-  const { login, logout, authenticated } = usePrivy();
+export default function CompanyPortal() {
+  const { ready, authenticated, login, logout } = usePrivy();
   const { wallets } = useWallets();
-  const solanaWallet = wallets.find(wallet => wallet.walletClientType === 'privy');
-  
-  // Use solanaWallet.address for public key
-  // Use solanaWallet.signTransaction for signing
+
+  if (!ready) return <div>Loading Privy...</div>;
+  if (!authenticated) return <button onClick={login}>Login with Privy</button>;
+
+  const solanaWallet = wallets.find(w => w.walletClientType === 'privy');
+
+  return (
+    <div>
+      Logged in as: {solanaWallet?.address}
+      <button onClick={logout}>Logout</button>
+    </div>
+  );
 }
 ```
 
-#### 4. Driver Self-Registration Page
+---
 
-Create a new page at `/register-driver` that allows drivers to:
+### 5. Add Driver Self-Registration
 
-1. Sign in with Privy (creates wallet automatically)
-2. Enter their license plate and name
-3. Self-register (if allowed) or request company approval
+`/app/register-driver/page.tsx`:
 
 ```tsx
-// /app/register-driver/page.tsx
+'use client';
+
+import { usePrivy, useWallets } from '@privy-io/react-auth';
+import { Connection, Transaction } from '@solana/web3.js';
+
 export default function RegisterDriverPage() {
   const { login, authenticated } = usePrivy();
   const { wallets } = useWallets();
-  
-  // Form to collect driver info
-  // Call register_driver instruction with their auto-created wallet
+
+  if (!authenticated) return <button onClick={login}>Sign in to Register</button>;
+
+  const wallet = wallets.find(w => w.walletClientType === 'privy');
+
+  async function registerDriver() {
+    const connection = new Connection('https://normals-solanad-6ba0.devnet.rpcpool.com/aeafc746-238d-4bea-af16-6b69e62a4eab');
+    const tx = new Transaction();
+    // ...build your transaction logic
+
+    console.log(await wallet?.sendTransaction!(tx, connection));
+  }
+
+  return (
+    <form onSubmit={registerDriver}>
+      <input placeholder="Driver Name" />
+      <input placeholder="License Plate" />
+      <button type="submit">Register</button>
+    </form>
+  );
 }
 ```
 
-#### 5. Environment Variables
+---
 
-Add to `.env.local`:
+### 6. Environment Variables
+
+Add in `.env.local`:
 
 ```
 NEXT_PUBLIC_PRIVY_APP_ID=your_privy_app_id
+NEXT_PUBLIC_PRIVY_CLIENT_ID=your_privy_client_id
 ```
 
-### Architecture Considerations
+---
 
-#### Option A: Company-Managed (Current)
-- Companies add drivers
-- Companies provide driver wallet addresses
-- Drivers sign in to claim their profile
+## Solana Configuration Summary
 
-**Pros**: Better control, verification
-**Cons**: More friction, requires company onboarding
+| Cluster | Type              | RPC                                                                                    | WebSocket                           |
+| ------- | ----------------- | -------------------------------------------------------------------------------------- | ----------------------------------- |
+| Mainnet | Default           | `https://api.mainnet-beta.solana.com`                                                  | `wss://api.mainnet-beta.solana.com` |
+| Devnet  | Custom (Your RPC) | `https://normals-solanad-6ba0.devnet.rpcpool.com/aeafc746-238d-4bea-af16-6b69e62a4eab` | same URL prefixed with `wss://`     |
 
-#### Option B: Self-Registration with Privy
-- Drivers sign up directly with Privy
-- Automatically creates wallet
-- Companies verify/approve later
+---
 
-**Pros**: Easier onboarding, better UX
-**Cons**: Requires moderation system
+## Architecture Modes
 
-#### Option C: Hybrid (Recommended)
-- Support both flows
-- Companies can add drivers (B2B)
-- Drivers can self-register (B2C)
-- Add approval/verification system
+| Mode                             | Description                           | Pros                   | Cons                  |
+| -------------------------------- | ------------------------------------- | ---------------------- | --------------------- |
+| **A. Company-managed**           | Companies add driver records manually | Controlled, verifiable | Slower onboarding     |
+| **B. Self-registration (Privy)** | Drivers onboard directly via Privy    | Fast UX                | Needs moderation      |
+| **C. Hybrid (✅ Recommended)**    | Both supported                        | Flexible, scalable     | Slightly more complex |
 
-### Migration Path
+---
 
-1. **Phase 1**: Keep current company-managed system
-2. **Phase 2**: Add Privy for company logins
-3. **Phase 3**: Add driver self-registration option
-4. **Phase 4**: Add approval/verification workflow
+## Security Considerations
 
-### Security Considerations
+1. **Sybil Resistance** – Company or admin verification
+2. **Wallet Ownership** – Drivers educated about key management
+3. **License Verification** – Optional photo or ID proof
 
-1. **Sybil Resistance**: How to prevent fake driver registrations?
-   - Require company verification
-   - Add KYC requirements
-   - Use on-chain reputation
-
-2. **Wallet Control**: Drivers need to understand they control their reputation
-   - Educational content
-   - Warning dialogs
-   - Recovery mechanisms
-
-3. **License Plate Verification**: How to verify license plates are real?
-   - Off-chain verification by companies
-   - Government ID integration
-   - Photo verification
+---
 
 ## Testing Locally
 
-### Prerequisites
+1. **Deploy Program**
 
-1. Solana CLI tools installed
-2. Local validator running or devnet access
-3. Test SOL in wallets
-
-### Test Flow
-
-1. **Deploy Smart Contract**
    ```bash
    cd satch
-   anchor build
-   anchor deploy
+   anchor build && anchor deploy
    ```
+2. **Update Program ID** in `lib.rs`, `Anchor.toml`, and IDL
+3. **Run Frontend**
 
-2. **Update Program ID**
-   Update the program ID in:
-   - `satch/programs/satch/src/lib.rs`
-   - `satch/Anchor.toml`
-   - `satch-fe/lib/idl/satch.json`
-
-3. **Start Frontend**
    ```bash
    cd satch-fe
-   npm install --legacy-peer-deps
-   npm run dev
+   npm i && npm run dev
    ```
+4. **Test Flow**
 
-4. **Test Company Registration**
-   - Connect wallet at `/company`
-   - Register company
-   - Add driver with license plate
+   * `/company`: Company onboarding
+   * `/register-driver`: Privy self-registration
+   * Home search: Verify driver license plate
 
-5. **Test Driver Lookup**
-   - Go to home page
-   - Search by license plate
-   - Verify driver profile loads
+---
+
+## Custom SVM (Optional)
+
+Privy supports **custom Solana Virtual Machine (SVM)** networks.
+You can send transactions directly to any SVM chain:
+
+```tsx
+import { Connection, Transaction } from '@solana/web3.js';
+
+// Your custom SVM RPC
+const connection = new Connection('https://normals-solanad-6ba0.devnet.rpcpool.com/aeafc746-238d-4bea-af16-6b69e62a4eab');
+const tx = new Transaction();
+
+// Send transaction via Privy wallet
+console.log(await wallet.sendTransaction!(tx, connection));
+```
+
+---
 
 ## Future Enhancements
 
-1. **Driver Dashboard**: Let drivers manage their own profiles
-2. **Analytics**: Show driver performance over time
-3. **Badges/NFTs**: Award drivers with achievement badges
-4. **Dispute Resolution**: Allow drivers to respond to reviews
-5. **Multi-Platform**: Allow drivers to work for multiple companies
+* Driver dashboard & analytics
+* NFT badges & reputation
+* Cross-company driver support
+* Moderation dashboard
+* Off-chain KYC integration
+
+---
 
 ## References
 
-- [Privy Documentation](https://docs.privy.io/)
-- [Privy Solana Guide](https://docs.privy.io/guide/react/wallets/solana)
-- [Anchor Documentation](https://www.anchor-lang.com/)
-- [Solana Web3.js](https://solana-labs.github.io/solana-web3.js/)
+* [Privy React SDK Docs](https://docs.privy.io/guide/react/setup)
+* [Solana Web3.js](https://solana-labs.github.io/solana-web3.js/)
+* [Anchor Framework](https://www.anchor-lang.com/)
+* [Solana SVM Overview](https://squads.so/blog/solana-svm-sealevel-virtual-machine)
+
+---
+

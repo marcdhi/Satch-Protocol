@@ -6,8 +6,9 @@ import { getConnection, PROGRAM_ID, findDriverPda } from "@/lib/solana";
 import { BorshCoder, Idl } from "@coral-xyz/anchor";
 import idl from "@/lib/idl/satch.json" assert { type: "json" };
 import LeaveReviewModal from "@/components/leave-review-modal";
-import { useWallet } from "@solana/wallet-adapter-react";
 import { useParams } from "next/navigation";
+import Header from "@/components/header";
+import { usePrivy } from "@privy-io/react-auth";
 
 type DriverApiResponse = { driverPubkey: string; driverName: string };
 
@@ -18,7 +19,7 @@ export default function DriverPage() {
   const [driverProfile, setDriverProfile] = useState<any | null>(null);
   const [reviews, setReviews] = useState<any[]>([]);
   const [showReviewModal, setShowReviewModal] = useState(false);
-  const wallet = useWallet();
+  const { ready, authenticated } = usePrivy();
 
   const params = useParams<{ id: string }>();
   const plateId = params?.id;
@@ -95,6 +96,7 @@ export default function DriverPage() {
 
   return (
     <main className="min-h-screen bg-white text-black">
+      <Header />
       <div className="border-b-2 border-black">
         <div className="max-w-4xl mx-auto px-4 py-6">
           <h1 className="font-press-start text-3xl md:text-4xl font-bold mb-2">
@@ -122,27 +124,18 @@ export default function DriverPage() {
           </div>
         </div>
         <div className="max-w-4xl mx-auto px-4 pb-8">
-          <div className="flex items-center justify-between mb-4">
-            {wallet.connected ? (
-              <div className="font-mono text-xs">
-                Connected: <span className="font-bold">{wallet.publicKey?.toBase58()}</span>
-              </div>
-            ) : (
-              <div className="font-mono text-xs text-gray-600">Wallet not connected</div>
-            )}
-            <button
-              onClick={() => (wallet.connected ? wallet.disconnect() : wallet.connect())}
-              className="border-2 border-black px-4 py-2 font-mono text-xs hover:bg-gray-100"
-            >
-              {wallet.connected ? "DISCONNECT" : "CONNECT WALLET"}
-            </button>
-          </div>
           <button
             onClick={() => setShowReviewModal(true)}
-            className="w-full bg-yellow-300 text-black px-8 py-4 font-mono font-bold text-sm tracking-widest border-2 border-black hover:bg-yellow-400 transition-colors"
+            disabled={!ready || !authenticated}
+            className="w-full bg-yellow-300 text-black px-8 py-4 font-mono font-bold text-sm tracking-widest border-2 border-black hover:bg-yellow-400 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
           >
             LEAVE A REVIEW
           </button>
+          {!authenticated && (
+            <p className="text-center text-xs font-mono mt-2 text-gray-600">
+              Please connect your wallet to leave a review.
+            </p>
+          )}
         </div>
       </div>
 

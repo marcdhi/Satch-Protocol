@@ -4,7 +4,7 @@ import type React from "react"
 
 import { useState } from "react"
 import { X } from "lucide-react"
-import { useWallet } from "@solana/wallet-adapter-react"
+import { useWallets } from "@privy-io/react-auth"
 import { PublicKey, Transaction, TransactionInstruction, SystemProgram } from "@solana/web3.js"
 import { BN, BorshCoder, Idl } from "@coral-xyz/anchor"
 import { getProgramWithWallet, findDriverPda, findReviewPda, getConnection, PROGRAM_ID } from "@/lib/solana"
@@ -21,7 +21,10 @@ export default function LeaveReviewModal({ onClose, driverName, driverPubkey }: 
   const [rating, setRating] = useState(0)
   const [reviewText, setReviewText] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const walletCtx = useWallet()
+  const { wallets } = useWallets()
+  
+  const solanaWallets = wallets.filter(w => w.chainType === 'solana');
+  const selectedWallet = solanaWallets.find(w => w.walletClientType === 'privy') || solanaWallets[0];
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -29,8 +32,8 @@ export default function LeaveReviewModal({ onClose, driverName, driverPubkey }: 
       alert("Please select a rating and write a review")
       return
     }
-    if (!walletCtx.publicKey) {
-      alert("Connect a Solana wallet to submit a review")
+    if (!selectedWallet) {
+      alert("Connect your Solana wallet to submit a review")
       return
     }
     if (!driverPubkey) {
@@ -74,27 +77,20 @@ export default function LeaveReviewModal({ onClose, driverName, driverPubkey }: 
         keys: [
           { pubkey: reviewPda, isSigner: false, isWritable: true },
           { pubkey: driverPda, isSigner: false, isWritable: true },
-          { pubkey: walletCtx.publicKey!, isSigner: true, isWritable: true },
+          { pubkey: new PublicKey(selectedWallet.address), isSigner: true, isWritable: true },
           { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
         ],
         data: new BorshCoder(idl as Idl).instruction.encode("leave_review", { rating, message_hash: messageHash }),
       })
 
       const tx = new Transaction().add(ix)
-      tx.feePayer = walletCtx.publicKey!
+      tx.feePayer = new PublicKey(selectedWallet.address)
       const { blockhash } = await connection.getLatestBlockhash()
       tx.recentBlockhash = blockhash
 
       console.log("[REVIEW] sending via wallet adapter sendTransaction...")
-      let txSig: string
-      if (walletCtx.sendTransaction) {
-        txSig = await walletCtx.sendTransaction(tx, connection)
-      } else if (walletCtx.signTransaction) {
-        const signed = await walletCtx.signTransaction(tx)
-        txSig = await connection.sendRawTransaction(signed.serialize())
-      } else {
-        throw new Error("Wallet cannot sign or send transactions")
-      }
+      const signedTx = await selectedWallet.signTransaction(tx)
+      const txSig = await connection.sendRawTransaction(signedTx.serialize())
 
       console.log("[REVIEW] tx success", txSig)
       alert(`Success! Transaction: ${txSig}`)
