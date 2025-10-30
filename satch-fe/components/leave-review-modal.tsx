@@ -1,107 +1,167 @@
-"use client"
+"use client";
 
-import type React from "react"
-
-import { useState } from "react"
-import { X } from "lucide-react"
-import { useWallets } from "@privy-io/react-auth"
-import { PublicKey, Transaction, TransactionInstruction, SystemProgram } from "@solana/web3.js"
-import { BN, BorshCoder, Idl } from "@coral-xyz/anchor"
-import { getProgramWithWallet, findDriverPda, findReviewPda, getConnection, PROGRAM_ID } from "@/lib/solana"
-import idl from "@/lib/idl/satch.json" assert { type: "json" }
-import { uploadToArweave } from "@/lib/arweave"
+import type React from "react";
+import { useState } from "react";
+import { X } from "lucide-react";
+import { useWallets, useSignAndSendTransaction } from "@privy-io/react-auth/solana";
+import { PublicKey, SystemProgram, LAMPORTS_PER_SOL } from "@solana/web3.js";
+import { BN, BorshCoder, Idl } from "@coral-xyz/anchor";
+import { getProgramWithWallet, findDriverPda, findReviewPda, getConnection, PROGRAM_ID } from "@/lib/solana";
+import idl from "@/lib/idl/satch.json" assert { type: "json" };
+import { uploadToArweave } from "@/lib/arweave";
+import bs58 from "bs58";
+import {
+  pipe,
+  createTransactionMessage,
+  setTransactionMessageFeePayer,
+  setTransactionMessageLifetimeUsingBlockhash,
+  appendTransactionMessageInstructions,
+  compileTransaction,
+  address,
+  getTransactionEncoder,
+  createSolanaRpc
+} from "@solana/kit";
 
 interface LeaveReviewModalProps {
-  onClose: () => void
-  driverName: string
-  driverPubkey?: string
+  onClose: () => void;
+  driverName: string;
+  driverPubkey?: string;
 }
 
 export default function LeaveReviewModal({ onClose, driverName, driverPubkey }: LeaveReviewModalProps) {
-  const [rating, setRating] = useState(0)
-  const [reviewText, setReviewText] = useState("")
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const { wallets } = useWallets()
-  
-  const solanaWallets = wallets.filter(w => w.chainType === 'solana');
-  const selectedWallet = solanaWallets.find(w => w.walletClientType === 'privy') || solanaWallets[0];
+  const [rating, setRating] = useState(0);
+  const [reviewText, setReviewText] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isAirdropping, setIsAirdropping] = useState(false);
+  const { wallets } = useWallets();
+  const { signAndSendTransaction } = useSignAndSendTransaction();
+
+  // Get the Solana wallet
+  const selectedWallet = wallets[0];
+  const walletAddress = selectedWallet?.address;
+
+  const handleAirdrop = async () => {
+    if (!walletAddress) {
+      alert("Please connect your wallet first.");
+      return;
+    }
+    try {
+      setIsAirdropping(true);
+      const connection = getConnection();
+      const walletPubkey = new PublicKey(walletAddress);
+      const signature = await connection.requestAirdrop(walletPubkey, 1 * LAMPORTS_PER_SOL);
+      await connection.confirmTransaction(signature, "confirmed");
+      alert("Airdrop of 1 DEVNET SOL successful! You can now submit your review.");
+    } catch (err) {
+      console.error("Airdrop failed", err);
+      alert("Airdrop failed. The devnet faucet may be busy. Please try again in a moment.");
+    } finally {
+      setIsAirdropping(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
+    e.preventDefault();
     if (rating === 0 || !reviewText.trim()) {
-      alert("Please select a rating and write a review")
-      return
+      alert("Please select a rating and write a review");
+      return;
     }
-    if (!selectedWallet) {
-      alert("Connect your Solana wallet to submit a review")
-      return
+    if (!walletAddress) {
+      alert("Connect your Solana wallet to submit a review");
+      return;
     }
     if (!driverPubkey) {
-      alert("Missing driver key; please navigate via the driver's page")
-      return
+      alert("Missing driver key; please navigate via the driver's page");
+      return;
     }
 
     try {
-      setIsSubmitting(true)
+      setIsSubmitting(true);
 
-      console.log("[REVIEW] Start submit", { rating, reviewTextLen: reviewText.length, driverPubkey })
+      console.log("[REVIEW] Start submit", { rating, reviewTextLen: reviewText.length, driverPubkey });
 
-      // 1) Upload review text to Arweave (mocked)
-      const messageHash = await uploadToArweave(reviewText)
-      console.log("[REVIEW] Arweave messageHash", messageHash)
+      // 1) Upload review text to Arweave
+      const messageHash = await uploadToArweave(reviewText);
+      console.log("[REVIEW] Arweave messageHash", messageHash);
 
       // 2) Derive driver PDA
-      const driverAuthority = new PublicKey(driverPubkey)
-      const driverPda = findDriverPda(driverAuthority)
-      console.log("[REVIEW] driverPda", driverPda.toBase58())
+      const driverAuthority = new PublicKey(driverPubkey);
+      const driverPda = findDriverPda(driverAuthority);
+      console.log("[REVIEW] driverPda", driverPda.toBase58());
 
-      // 3) Fetch driver account to get current review_count (RPC + BorshCoder for reliability)
-      const connection = getConnection()
-      const coder = new BorshCoder(idl as Idl)
-      const driverInfo = await connection.getAccountInfo(driverPda)
+      // 3) Fetch driver account to get current review_count
+      const connection = getConnection();
+      const coder = new BorshCoder(idl as Idl);
+      const driverInfo = await connection.getAccountInfo(driverPda);
       if (!driverInfo || !driverInfo.data || !driverInfo.owner.equals(PROGRAM_ID)) {
-        throw new Error("Driver profile not found on-chain for review")
+        throw new Error("Driver profile not found on-chain for review");
       }
-      const driverAccount: any = coder.accounts.decode("DriverProfile", driverInfo.data)
-      const currentCount: number = driverAccount.review_count?.toNumber?.() ?? Number(driverAccount.review_count ?? 0)
-      console.log("[REVIEW] currentCount", currentCount)
+      const driverAccount: any = coder.accounts.decode("DriverProfile", driverInfo.data);
+      const currentCount: number = driverAccount.review_count?.toNumber?.() ?? Number(driverAccount.review_count ?? 0);
+      console.log("[REVIEW] currentCount", currentCount);
 
       // 4) Derive new review PDA
-      const reviewPda = findReviewPda(driverPda, new BN(currentCount))
-      console.log("[REVIEW] reviewPda", reviewPda.toBase58())
+      const reviewPda = findReviewPda(driverPda, new BN(currentCount));
+      console.log("[REVIEW] reviewPda", reviewPda.toBase58());
 
-      // 5) Call on-chain method (cNFT burn intentionally omitted for hackathon)
-      console.log("[REVIEW] building tx leaveReview (raw instruction)...")
-      const ix = new TransactionInstruction({
-        programId: PROGRAM_ID,
-        keys: [
-          { pubkey: reviewPda, isSigner: false, isWritable: true },
-          { pubkey: driverPda, isSigner: false, isWritable: true },
-          { pubkey: new PublicKey(selectedWallet.address), isSigner: true, isWritable: true },
-          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+      // 5) Build the instruction
+      const instructionData = coder.instruction.encode("leave_review", {
+        rating,
+        message_hash: messageHash,
+      });
+
+      const walletPubkey = new PublicKey(walletAddress);
+
+      const ix = {
+        programAddress: PROGRAM_ID,
+        accounts: [
+          { address: reviewPda, role: "write" },
+          { address: driverPda, role: "write" },
+          { address: walletPubkey, role: "write-signer" },
+          { address: SystemProgram.programId, role: "read" },
         ],
-        data: new BorshCoder(idl as Idl).instruction.encode("leave_review", { rating, message_hash: messageHash }),
-      })
+        data: instructionData,
+      };
 
-      const tx = new Transaction().add(ix)
-      tx.feePayer = new PublicKey(selectedWallet.address)
-      const { blockhash } = await connection.getLatestBlockhash()
-      tx.recentBlockhash = blockhash
+      console.log("[REVIEW] building tx with @solana/kit...");
 
-      console.log("[REVIEW] sending via wallet adapter sendTransaction...")
-      const signedTx = await selectedWallet.signTransaction(tx)
-      const txSig = await connection.sendRawTransaction(signedTx.serialize())
+      const {getLatestBlockhash} = createSolanaRpc('https://normals-solanad-6ba0.devnet.rpcpool.com/aeafc746-238d-4bea-af16-6b69e62a4eab');
+      const {value: latestBlockhash} = await getLatestBlockhash().send();
+      
+      const transaction = pipe(
+        createTransactionMessage({ version: 0 }),
+        (tx) => setTransactionMessageFeePayer(address(walletAddress), tx),
+        (tx) => setTransactionMessageLifetimeUsingBlockhash(latestBlockhash, tx),
+        (tx) => appendTransactionMessageInstructions([ix], tx),
+        (tx) => compileTransaction(tx),
+        (tx) => new Uint8Array(getTransactionEncoder().encode(tx))
+      );
 
-      console.log("[REVIEW] tx success", txSig)
-      alert(`Success! Transaction: ${txSig}`)
-      onClose()
+      console.log("[REVIEW] signing and sending transaction...");
+
+      const { signature } = await signAndSendTransaction({
+        transaction: transaction,
+        wallet: selectedWallet,
+        chain: 'solana:devnet',
+        options: {
+          uiOptions: {
+            title: "Sign Review Transaction",
+          },
+        },
+      });
+      
+      const txSig = bs58.encode(signature);
+
+      console.log("[REVIEW] tx success", txSig);
+      alert(`Success! Transaction: ${txSig}`);
+      onClose();
     } catch (err: any) {
-      console.error("[REVIEW] error", err)
-      alert(err?.message || "Failed to submit review")
+      console.error("[REVIEW] error", err);
+      alert(err?.message || "Failed to submit review");
     } finally {
-      setIsSubmitting(false)
+      setIsSubmitting(false);
     }
-  }
+  };
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
@@ -152,7 +212,24 @@ export default function LeaveReviewModal({ onClose, driverName, driverPubkey }: 
               placeholder="Describe your experience with this driver..."
               className="w-full border-2 border-black p-4 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-yellow-300 min-h-32 resize-none"
             />
-            <p className="font-mono text-xs text-gray-600 mt-2">{reviewText.length} / 500 characters</p>
+            <p className="font-mono text-xs text-gray-600 mt-2">
+              {reviewText.length} / 500 characters
+            </p>
+          </div>
+
+          {/* Airdrop */}
+          <div className="border-t-2 border-dashed border-black pt-4">
+            <p className="font-mono text-xs text-gray-600 mb-2 text-center">
+              First time on Devnet? Get some free SOL to pay for transaction fees.
+            </p>
+            <button
+              type="button"
+              onClick={handleAirdrop}
+              disabled={isAirdropping || !walletAddress}
+              className="w-full bg-gray-200 text-black px-8 py-3 font-mono font-bold text-sm tracking-widest border-2 border-black hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {isAirdropping ? "AIRDROPPING..." : "AIRDROP 1 DEVNET SOL"}
+            </button>
           </div>
 
           {/* Submit Button */}
@@ -166,5 +243,5 @@ export default function LeaveReviewModal({ onClose, driverName, driverPubkey }: 
         </form>
       </div>
     </div>
-  )
+  );
 }
