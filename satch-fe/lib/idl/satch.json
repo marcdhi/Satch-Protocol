@@ -110,6 +110,28 @@
             }
           },
           {
+            "name": "license_plate_mapping",
+            "writable": true,
+            "pda": {
+              "seeds": [
+                {
+                  "kind": "const",
+                  "value": [
+                    112,
+                    108,
+                    97,
+                    116,
+                    101
+                  ]
+                },
+                {
+                  "kind": "arg",
+                  "path": "license_plate"
+                }
+              ]
+            }
+          },
+          {
             "name": "driver_authority"
           },
           {
@@ -132,6 +154,10 @@
         "args": [
           {
             "name": "name",
+            "type": "string"
+          },
+          {
+            "name": "license_plate",
             "type": "string"
           }
         ]
@@ -207,6 +233,19 @@
         ]
       },
       {
+        "name": "LicensePlateMapping",
+        "discriminator": [
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8
+        ]
+      },
+      {
         "name": "Platform",
         "discriminator": [
           77,
@@ -264,12 +303,32 @@
               "type": "string"
             },
             {
+              "name": "license_plate",
+              "type": "string"
+            },
+            {
               "name": "rating_sum",
               "type": "u64"
             },
             {
               "name": "review_count",
               "type": "u64"
+            }
+          ]
+        }
+      },
+      {
+        "name": "LicensePlateMapping",
+        "type": {
+          "kind": "struct",
+          "fields": [
+            {
+              "name": "license_plate",
+              "type": "string"
+            },
+            {
+              "name": "driver_pda",
+              "type": "pubkey"
             }
           ]
         }
