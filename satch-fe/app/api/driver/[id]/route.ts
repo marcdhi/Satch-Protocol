@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { PublicKey } from "@solana/web3.js";
-import { getProgram, findLicensePlatePda, findDriverPda } from "@/lib/solana-server";
+import { getConnection, PROGRAM_ID, findLicensePlatePda } from "@/lib/solana-server";
+import { BorshCoder, Idl } from "@coral-xyz/anchor";
+import idl from "@/lib/idl/satch.json" assert { type: "json" };
 
 // This API route now fetches driver information from the blockchain
 // based on the license plate by querying the LicensePlateMapping PDA
@@ -11,36 +13,41 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   }
 
   try {
-    // 1. Get the license plate mapping PDA
-    const platePda = findLicensePlatePda(id);
-    
-    // 2. Fetch the mapping from on-chain
-    const program = getProgram();
-    const mapping = await (program.account as any).licensePlateMapping.fetch(platePda);
-    
-    if (!mapping) {
+    // 1. Normalize and derive PDA for the license plate mapping
+    const normalizedId = id.trim().toUpperCase();
+    const platePda = findLicensePlatePda(normalizedId);
+
+    // 2. Fetch raw account data via RPC and decode with BorshCoder
+    const connection = getConnection();
+    const coder = new BorshCoder(idl as Idl);
+
+    const plateInfo = await connection.getAccountInfo(platePda);
+    if (!plateInfo || !plateInfo.data || !plateInfo.owner.equals(PROGRAM_ID)) {
       return NextResponse.json({ error: "Driver not found" }, { status: 404 });
     }
+    const mapping: any = coder.accounts.decode("LicensePlateMapping", plateInfo.data);
 
-    // 3. Get the driver PDA from the mapping
-    const driverPda = mapping.driverPda as PublicKey;
-    
-    // 4. Fetch the driver profile to get the name
-    const driverProfile = await (program.account as any).driverProfile.fetch(driverPda);
-    
-    // 5. Return the driver information
+    // 3. Read the driver profile via the driver PDA from mapping
+    const driverPda = new PublicKey(mapping.driver_pda);
+    const driverInfo = await connection.getAccountInfo(driverPda);
+    if (!driverInfo || !driverInfo.data || !driverInfo.owner.equals(PROGRAM_ID)) {
+      return NextResponse.json({ error: "Driver not found" }, { status: 404 });
+    }
+    const driverProfile: any = coder.accounts.decode("DriverProfile", driverInfo.data);
+
+    // 4. Return essential fields
     return NextResponse.json(
       {
-        driverPubkey: driverProfile.authority.toBase58(),
+        driverPubkey: driverProfile.authority.toBase58?.() || String(driverProfile.authority),
         driverName: driverProfile.name,
-        licensePlate: driverProfile.licensePlate,
+        licensePlate: driverProfile.license_plate,
       },
       { status: 200 }
     );
   } catch (error: any) {
     console.error("Error fetching driver:", error);
     return NextResponse.json(
-      { error: "Driver not found or blockchain error" },
+      { error: "Driver not found or blockchain error", details: error?.message },
       { status: 404 }
     );
   }

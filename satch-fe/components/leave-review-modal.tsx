@@ -5,9 +5,10 @@ import type React from "react"
 import { useState } from "react"
 import { X } from "lucide-react"
 import { useWallet } from "@solana/wallet-adapter-react"
-import { PublicKey } from "@solana/web3.js"
-import { BN } from "@coral-xyz/anchor"
-import { getProgramWithWallet, findDriverPda, findReviewPda } from "@/lib/solana"
+import { PublicKey, Transaction, TransactionInstruction, SystemProgram } from "@solana/web3.js"
+import { BN, BorshCoder, Idl } from "@coral-xyz/anchor"
+import { getProgramWithWallet, findDriverPda, findReviewPda, getConnection, PROGRAM_ID } from "@/lib/solana"
+import idl from "@/lib/idl/satch.json" assert { type: "json" }
 import { uploadToArweave } from "@/lib/arweave"
 
 interface LeaveReviewModalProps {
@@ -40,46 +41,66 @@ export default function LeaveReviewModal({ onClose, driverName, driverPubkey }: 
     try {
       setIsSubmitting(true)
 
+      console.log("[REVIEW] Start submit", { rating, reviewTextLen: reviewText.length, driverPubkey })
+
       // 1) Upload review text to Arweave (mocked)
       const messageHash = await uploadToArweave(reviewText)
+      console.log("[REVIEW] Arweave messageHash", messageHash)
 
-      // 2) Anchor program
-      // Build an Anchor program using the connected wallet for signing
-      const adapterWallet = {
-        publicKey: walletCtx.publicKey!,
-        signTransaction: walletCtx.signTransaction!,
-        signAllTransactions: walletCtx.signAllTransactions
-          ? walletCtx.signAllTransactions
-          : async (txs: any[]) => Promise.all(txs.map((tx) => walletCtx.signTransaction!(tx))),
-      } as any
-      const program = getProgramWithWallet<any>(adapterWallet)
-
-      // 3) Derive driver PDA
+      // 2) Derive driver PDA
       const driverAuthority = new PublicKey(driverPubkey)
       const driverPda = findDriverPda(driverAuthority)
+      console.log("[REVIEW] driverPda", driverPda.toBase58())
 
-      // 4) Fetch driver account to get current review_count
-      const driverAccount = await (program.account as any).driverProfile.fetch(driverPda)
-      const currentCount: number = driverAccount.reviewCount.toNumber()
+      // 3) Fetch driver account to get current review_count (RPC + BorshCoder for reliability)
+      const connection = getConnection()
+      const coder = new BorshCoder(idl as Idl)
+      const driverInfo = await connection.getAccountInfo(driverPda)
+      if (!driverInfo || !driverInfo.data || !driverInfo.owner.equals(PROGRAM_ID)) {
+        throw new Error("Driver profile not found on-chain for review")
+      }
+      const driverAccount: any = coder.accounts.decode("DriverProfile", driverInfo.data)
+      const currentCount: number = driverAccount.review_count?.toNumber?.() ?? Number(driverAccount.review_count ?? 0)
+      console.log("[REVIEW] currentCount", currentCount)
 
-      // 5) Derive new review PDA
+      // 4) Derive new review PDA
       const reviewPda = findReviewPda(driverPda, new BN(currentCount))
+      console.log("[REVIEW] reviewPda", reviewPda.toBase58())
 
-      // 6) Call on-chain method (cNFT burn intentionally omitted for hackathon)
-      const txSig = await (program as any).methods
-        .leaveReview(rating, messageHash)
-        .accounts({
-          reviewAccount: reviewPda,
-          driverAccount: driverPda,
-          reviewer: walletCtx.publicKey!,
-          systemProgram: new PublicKey("11111111111111111111111111111111"),
-        })
-        .rpc()
+      // 5) Call on-chain method (cNFT burn intentionally omitted for hackathon)
+      console.log("[REVIEW] building tx leaveReview (raw instruction)...")
+      const ix = new TransactionInstruction({
+        programId: PROGRAM_ID,
+        keys: [
+          { pubkey: reviewPda, isSigner: false, isWritable: true },
+          { pubkey: driverPda, isSigner: false, isWritable: true },
+          { pubkey: walletCtx.publicKey!, isSigner: true, isWritable: true },
+          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+        ],
+        data: new BorshCoder(idl as Idl).instruction.encode("leave_review", { rating, message_hash: messageHash }),
+      })
 
+      const tx = new Transaction().add(ix)
+      tx.feePayer = walletCtx.publicKey!
+      const { blockhash } = await connection.getLatestBlockhash()
+      tx.recentBlockhash = blockhash
+
+      console.log("[REVIEW] sending via wallet adapter sendTransaction...")
+      let txSig: string
+      if (walletCtx.sendTransaction) {
+        txSig = await walletCtx.sendTransaction(tx, connection)
+      } else if (walletCtx.signTransaction) {
+        const signed = await walletCtx.signTransaction(tx)
+        txSig = await connection.sendRawTransaction(signed.serialize())
+      } else {
+        throw new Error("Wallet cannot sign or send transactions")
+      }
+
+      console.log("[REVIEW] tx success", txSig)
       alert(`Success! Transaction: ${txSig}`)
       onClose()
     } catch (err: any) {
-      console.error(err)
+      console.error("[REVIEW] error", err)
       alert(err?.message || "Failed to submit review")
     } finally {
       setIsSubmitting(false)

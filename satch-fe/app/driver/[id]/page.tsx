@@ -2,7 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { PublicKey } from "@solana/web3.js";
-import { getProgram, findDriverPda } from "@/lib/solana";
+import { getConnection, PROGRAM_ID, findDriverPda } from "@/lib/solana";
+import { BorshCoder, Idl } from "@coral-xyz/anchor";
+import idl from "@/lib/idl/satch.json" assert { type: "json" };
 import LeaveReviewModal from "@/components/leave-review-modal";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { useParams } from "next/navigation";
@@ -34,25 +36,39 @@ export default function DriverPage() {
         if (cancelled) return;
         setApiData(data);
 
-        // 2) Build Anchor program
-        const program = getProgram<any>();
-
-        // 3) Derive driver PDA
+        // 2) Derive driver PDA
         const driverAuthority = new PublicKey(data.driverPubkey);
         const driverPda = findDriverPda(driverAuthority);
 
-        // 4) Fetch on-chain driver profile
-        const profile = await (program.account as any).driverProfile.fetch(driverPda);
+        // 3) Fetch on-chain driver profile via RPC + BorshCoder
+        const connection = getConnection();
+        const coder = new BorshCoder(idl as Idl);
+        const driverInfo = await connection.getAccountInfo(driverPda);
+        if (!driverInfo || !driverInfo.data || !driverInfo.owner.equals(PROGRAM_ID)) {
+          throw new Error("Driver profile not found on-chain");
+        }
+        const profile: any = coder.accounts.decode("DriverProfile", driverInfo.data);
         if (cancelled) return;
         setDriverProfile(profile);
 
-        // 5) Fetch all reviews by memcmp filter on Review.driver (offset 8 after disc)
-        const filter = {
-          memcmp: { offset: 8, bytes: driverPda.toBase58() },
-        } as any;
-        const all = await (program.account as any).review.all([filter]);
+        // 4) Fetch reviews via memcmp filter on Review.driver (offset 8)
+        const reviewAccounts = await connection.getProgramAccounts(PROGRAM_ID, {
+          filters: [{ memcmp: { offset: 8, bytes: driverPda.toBase58() } }],
+        });
+        const all = reviewAccounts.map((acc) => {
+          try {
+            const decoded: any = coder.accounts.decode("Review", acc.account.data);
+            return { publicKey: acc.pubkey, account: decoded };
+          } catch (e) {
+            return { publicKey: acc.pubkey, decodeError: (e as any)?.message };
+          }
+        });
         if (cancelled) return;
-        setReviews(all.map((r: any) => ({ pubkey: r.publicKey, ...r.account })));
+        setReviews(
+          all
+            .filter((r: any) => r.account)
+            .map((r: any) => ({ pubkey: r.publicKey, ...r.account, messageHash: r.account.message_hash }))
+        );
       } catch (e: any) {
         if (!cancelled) setError(e.message || "Failed to load driver");
       } finally {
@@ -69,9 +85,12 @@ export default function DriverPage() {
   if (error) return <div className="p-6 text-red-600">{error}</div>;
   if (!apiData || !driverProfile) return <div className="p-6">No data</div>;
 
+  const toNum = (v: any): number =>
+    v?.toNumber ? v.toNumber() : typeof v === "bigint" ? Number(v) : Number(v ?? 0);
+
   const avg =
-    driverProfile.reviewCount?.toNumber?.() > 0
-      ? (driverProfile.ratingSum.toNumber() / driverProfile.reviewCount.toNumber()).toFixed(2)
+    toNum(driverProfile.review_count) > 0
+      ? (toNum(driverProfile.rating_sum) / toNum(driverProfile.review_count)).toFixed(2)
       : "0.00";
 
   return (
@@ -95,15 +114,11 @@ export default function DriverPage() {
           </div>
           <div className="border-2 border-black p-6 text-center">
             <p className="font-mono text-xs text-gray-600 mb-2 tracking-widest">TOTAL REVIEWS</p>
-            <p className="font-press-start text-2xl md:text-3xl">
-              {driverProfile.reviewCount.toNumber()}
-            </p>
+            <p className="font-press-start text-2xl md:text-3xl">{toNum(driverProfile.review_count)}</p>
           </div>
           <div className="border-2 border-black p-6 text-center">
             <p className="font-mono text-xs text-gray-600 mb-2 tracking-widest">RATING SUM</p>
-            <p className="font-press-start text-2xl md:text-3xl">
-              {driverProfile.ratingSum.toNumber()}
-            </p>
+            <p className="font-press-start text-2xl md:text-3xl">{toNum(driverProfile.rating_sum)}</p>
           </div>
         </div>
         <div className="max-w-4xl mx-auto px-4 pb-8">

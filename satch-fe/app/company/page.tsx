@@ -2,8 +2,10 @@
 
 import { useState, useEffect } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
-import { PublicKey, SystemProgram } from "@solana/web3.js";
-import { getProgramWithWallet, findPlatformPda, findDriverPda, findLicensePlatePda } from "@/lib/solana";
+import { PublicKey, SystemProgram, Transaction, TransactionInstruction } from "@solana/web3.js";
+import { findPlatformPda, findDriverPda, findLicensePlatePda, getConnection, PROGRAM_ID } from "@/lib/solana";
+import { BorshCoder, Idl } from "@coral-xyz/anchor";
+import idl from "@/lib/idl/satch.json" assert { type: "json" };
 import { useRouter } from "next/navigation";
 
 export default function CompanyPage() {
@@ -31,15 +33,17 @@ export default function CompanyPage() {
       }
 
       try {
-        const program = getProgramWithWallet<any>({
-          publicKey: wallet.publicKey,
-          signTransaction: wallet.signTransaction!,
-          signAllTransactions: wallet.signAllTransactions || (async (txs: any[]) => txs),
-        } as any);
-
+        const connection = getConnection();
+        const coder = new BorshCoder(idl as Idl);
         const platformPda = findPlatformPda(wallet.publicKey);
-        const platformData = await (program.account as any).platform.fetch(platformPda);
-        setPlatform(platformData);
+        
+        const platformInfo = await connection.getAccountInfo(platformPda);
+        if (!platformInfo || !platformInfo.data || !platformInfo.owner.equals(PROGRAM_ID)) {
+          setPlatform(null);
+        } else {
+          const platformData: any = coder.accounts.decode("Platform", platformInfo.data);
+          setPlatform(platformData);
+        }
       } catch (e) {
         // Platform not registered yet
         setPlatform(null);
@@ -49,7 +53,7 @@ export default function CompanyPage() {
     }
 
     loadPlatform();
-  }, [wallet.publicKey, wallet.signTransaction, wallet.signAllTransactions]);
+  }, [wallet.publicKey]);
 
   const handleRegisterCompany = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -60,28 +64,43 @@ export default function CompanyPage() {
 
     try {
       setIsRegistering(true);
-      const program = getProgramWithWallet<any>({
-        publicKey: wallet.publicKey,
-        signTransaction: wallet.signTransaction,
-        signAllTransactions: wallet.signAllTransactions || (async (txs: any[]) => txs),
-      } as any);
-
+      const connection = getConnection();
+      const coder = new BorshCoder(idl as Idl);
       const platformPda = findPlatformPda(wallet.publicKey);
 
-      const tx = await program.methods
-        .registerPlatform(companyName)
-        .accounts({
-          platformAccount: platformPda,
-          authority: wallet.publicKey,
-          systemProgram: SystemProgram.programId,
-        })
-        .rpc();
+      const ix = new TransactionInstruction({
+        programId: PROGRAM_ID,
+        keys: [
+          { pubkey: platformPda, isSigner: false, isWritable: true },
+          { pubkey: wallet.publicKey, isSigner: true, isWritable: true },
+          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+        ],
+        data: coder.instruction.encode("register_platform", { name: companyName }),
+      });
 
-      alert(`Company registered successfully! Transaction: ${tx}`);
+      const tx = new Transaction().add(ix);
+      tx.feePayer = wallet.publicKey;
+      const { blockhash } = await connection.getLatestBlockhash();
+      tx.recentBlockhash = blockhash;
+
+      let txSig: string;
+      if (wallet.sendTransaction) {
+        txSig = await wallet.sendTransaction(tx, connection);
+      } else if (wallet.signTransaction) {
+        const signed = await wallet.signTransaction(tx);
+        txSig = await connection.sendRawTransaction(signed.serialize());
+      } else {
+        throw new Error("Wallet cannot sign or send transactions");
+      }
+
+      alert(`Company registered successfully! Transaction: ${txSig}`);
       
       // Reload platform data
-      const platformData = await (program.account as any).platform.fetch(platformPda);
-      setPlatform(platformData);
+      const platformInfo = await connection.getAccountInfo(platformPda);
+      if (platformInfo && platformInfo.data && platformInfo.owner.equals(PROGRAM_ID)) {
+        const platformData: any = coder.accounts.decode("Platform", platformInfo.data);
+        setPlatform(platformData);
+      }
       setCompanyName("");
     } catch (error: any) {
       console.error("Error registering company:", error);
@@ -105,34 +124,53 @@ export default function CompanyPage() {
 
     try {
       setIsAddingDriver(true);
-      const program = getProgramWithWallet<any>({
-        publicKey: wallet.publicKey,
-        signTransaction: wallet.signTransaction,
-        signAllTransactions: wallet.signAllTransactions || (async (txs: any[]) => txs),
-      } as any);
+      const connection = getConnection();
+      const coder = new BorshCoder(idl as Idl);
 
       const driverAuthority = new PublicKey(driverWallet);
       const driverPda = findDriverPda(driverAuthority);
       const platePda = findLicensePlatePda(licensePlate);
       const platformPda = findPlatformPda(wallet.publicKey);
 
-      const tx = await program.methods
-        .registerDriver(driverName, licensePlate)
-        .accounts({
-          driverAccount: driverPda,
-          licensePlateMapping: platePda,
-          driverAuthority: driverAuthority,
-          platformAccount: platformPda,
-          authority: wallet.publicKey,
-          systemProgram: SystemProgram.programId,
-        })
-        .rpc();
+      const ix = new TransactionInstruction({
+        programId: PROGRAM_ID,
+        keys: [
+          { pubkey: driverPda, isSigner: false, isWritable: true },
+          { pubkey: platePda, isSigner: false, isWritable: true },
+          { pubkey: driverAuthority, isSigner: false, isWritable: false },
+          { pubkey: platformPda, isSigner: false, isWritable: true },
+          { pubkey: wallet.publicKey, isSigner: true, isWritable: true },
+          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+        ],
+        data: coder.instruction.encode("register_driver", { 
+          name: driverName, 
+          license_plate: licensePlate 
+        }),
+      });
 
-      alert(`Driver registered successfully! Transaction: ${tx}\nLicense Plate: ${licensePlate}`);
+      const tx = new Transaction().add(ix);
+      tx.feePayer = wallet.publicKey;
+      const { blockhash } = await connection.getLatestBlockhash();
+      tx.recentBlockhash = blockhash;
+
+      let txSig: string;
+      if (wallet.sendTransaction) {
+        txSig = await wallet.sendTransaction(tx, connection);
+      } else if (wallet.signTransaction) {
+        const signed = await wallet.signTransaction(tx);
+        txSig = await connection.sendRawTransaction(signed.serialize());
+      } else {
+        throw new Error("Wallet cannot sign or send transactions");
+      }
+
+      alert(`Driver registered successfully! Transaction: ${txSig}\nLicense Plate: ${licensePlate}`);
       
       // Reload platform data
-      const platformData = await (program.account as any).platform.fetch(platformPda);
-      setPlatform(platformData);
+      const platformInfo = await connection.getAccountInfo(platformPda);
+      if (platformInfo && platformInfo.data && platformInfo.owner.equals(PROGRAM_ID)) {
+        const platformData: any = coder.accounts.decode("Platform", platformInfo.data);
+        setPlatform(platformData);
+      }
       
       // Clear form
       setDriverName("");
@@ -233,7 +271,7 @@ export default function CompanyPage() {
                     VERIFIED: <span className="font-bold">{platform.verified ? "YES" : "NO"}</span>
                   </p>
                   <p className="font-mono text-xs">
-                    DRIVER COUNT: <span className="font-bold">{platform.driverCount.toString()}</span>
+                    DRIVER COUNT: <span className="font-bold">{platform.driver_count?.toString() || "0"}</span>
                   </p>
                 </div>
               </div>
