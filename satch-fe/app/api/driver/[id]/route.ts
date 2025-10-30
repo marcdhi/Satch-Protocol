@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { PublicKey } from "@solana/web3.js";
-import { getProgram, findLicensePlatePda, findDriverPda } from "@/lib/solana";
+import { getProgram, findLicensePlatePda, findDriverPda } from "@/lib/solana-server";
 
 // This API route now fetches driver information from the blockchain
 // based on the license plate by querying the LicensePlateMapping PDA
@@ -15,7 +15,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     const platePda = findLicensePlatePda(id);
     
     // 2. Fetch the mapping from on-chain
-    const program = getProgram<any>();
+    const program = getProgram();
     const mapping = await (program.account as any).licensePlateMapping.fetch(platePda);
     
     if (!mapping) {

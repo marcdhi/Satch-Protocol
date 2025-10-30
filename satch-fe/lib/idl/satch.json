@@ -1,68 +1,375 @@
 {
-    "address": "4D3Lfi2YVgFiqRaiN8SyBxJkob5cnbxHUo86xUtgqNoH",
-    "metadata": {
-      "name": "satch",
-      "version": "0.1.0",
-      "spec": "0.1.0",
-      "description": "Created with Anchor"
+  "address": "4D3Lfi2YVgFiqRaiN8SyBxJkob5cnbxHUo86xUtgqNoH",
+  "metadata": {
+    "name": "satch",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "Created with Anchor"
+  },
+  "instructions": [
+    {
+      "name": "leave_review",
+      "discriminator": [
+        117,
+        81,
+        110,
+        222,
+        0,
+        51,
+        250,
+        47
+      ],
+      "accounts": [
+        {
+          "name": "review_account",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  101,
+                  118,
+                  105,
+                  101,
+                  119
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "driver_account"
+              },
+              {
+                "kind": "account",
+                "path": "driver_account.review_count",
+                "account": "DriverProfile"
+              }
+            ]
+          }
+        },
+        {
+          "name": "driver_account",
+          "writable": true
+        },
+        {
+          "name": "reviewer",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "rating",
+          "type": "u8"
+        },
+        {
+          "name": "message_hash",
+          "type": "string"
+        }
+      ]
     },
-    "instructions": [
-      {
-        "name": "leave_review",
-        "discriminator": [
-          117,
-          81,
-          110,
-          222,
-          0,
-          51,
-          250,
-          47
-        ],
-        "accounts": [
+    {
+      "name": "register_driver",
+      "discriminator": [
+        111,
+        15,
+        228,
+        191,
+        92,
+        150,
+        88,
+        27
+      ],
+      "accounts": [
+        {
+          "name": "driver_account",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  114,
+                  105,
+                  118,
+                  101,
+                  114
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "driver_authority"
+              }
+            ]
+          }
+        },
+        {
+          "name": "license_plate_mapping",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  108,
+                  97,
+                  116,
+                  101
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "license_plate"
+              }
+            ]
+          }
+        },
+        {
+          "name": "driver_authority"
+        },
+        {
+          "name": "platform_account",
+          "writable": true
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "platform_account"
+          ]
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "license_plate",
+          "type": "string"
+        }
+      ]
+    },
+    {
+      "name": "register_platform",
+      "discriminator": [
+        115,
+        120,
+        8,
+        254,
+        177,
+        20,
+        8,
+        168
+      ],
+      "accounts": [
+        {
+          "name": "platform_account",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  108,
+                  97,
+                  116,
+                  102,
+                  111,
+                  114,
+                  109
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "authority"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "name",
+          "type": "string"
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "DriverProfile",
+      "discriminator": [
+        116,
+        172,
+        75,
+        50,
+        68,
+        157,
+        48,
+        16
+      ]
+    },
+    {
+      "name": "LicensePlateMapping",
+      "discriminator": [
+        109,
+        60,
+        44,
+        157,
+        111,
+        146,
+        212,
+        136
+      ]
+    },
+    {
+      "name": "Platform",
+      "discriminator": [
+        77,
+        92,
+        204,
+        58,
+        187,
+        98,
+        91,
+        12
+      ]
+    },
+    {
+      "name": "Review",
+      "discriminator": [
+        124,
+        63,
+        203,
+        215,
+        226,
+        30,
+        222,
+        15
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "RatingOutOfRange",
+      "msg": "Rating must be between 1 and 5."
+    },
+    {
+      "code": 6001,
+      "name": "InvalidPlatformAuthority",
+      "msg": "Invalid platform authority."
+    }
+  ],
+  "types": [
+    {
+      "name": "DriverProfile",
+      "type": {
+        "kind": "struct",
+        "fields": [
           {
-            "name": "review_account",
-            "writable": true,
-            "pda": {
-              "seeds": [
-                {
-                  "kind": "const",
-                  "value": [
-                    114,
-                    101,
-                    118,
-                    105,
-                    101,
-                    119
-                  ]
-                },
-                {
-                  "kind": "account",
-                  "path": "driver_account"
-                },
-                {
-                  "kind": "account",
-                  "path": "driver_account.review_count",
-                  "account": "DriverProfile"
-                }
-              ]
-            }
+            "name": "authority",
+            "type": "pubkey"
           },
           {
-            "name": "driver_account",
-            "writable": true
+            "name": "platform",
+            "type": "pubkey"
+          },
+          {
+            "name": "name",
+            "type": "string"
+          },
+          {
+            "name": "license_plate",
+            "type": "string"
+          },
+          {
+            "name": "rating_sum",
+            "type": "u64"
+          },
+          {
+            "name": "review_count",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "LicensePlateMapping",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "license_plate",
+            "type": "string"
+          },
+          {
+            "name": "driver_pda",
+            "type": "pubkey"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Platform",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "type": "pubkey"
+          },
+          {
+            "name": "name",
+            "type": "string"
+          },
+          {
+            "name": "verified",
+            "type": "bool"
+          },
+          {
+            "name": "driver_count",
+            "type": "u64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Review",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "driver",
+            "type": "pubkey"
           },
           {
             "name": "reviewer",
-            "writable": true,
-            "signer": true
+            "type": "pubkey"
           },
-          {
-            "name": "system_program",
-            "address": "11111111111111111111111111111111"
-          }
-        ],
-        "args": [
           {
             "name": "rating",
             "type": "u8"
@@ -72,314 +379,7 @@
             "type": "string"
           }
         ]
-      },
-      {
-        "name": "register_driver",
-        "discriminator": [
-          111,
-          15,
-          228,
-          191,
-          92,
-          150,
-          88,
-          27
-        ],
-        "accounts": [
-          {
-            "name": "driver_account",
-            "writable": true,
-            "pda": {
-              "seeds": [
-                {
-                  "kind": "const",
-                  "value": [
-                    100,
-                    114,
-                    105,
-                    118,
-                    101,
-                    114
-                  ]
-                },
-                {
-                  "kind": "account",
-                  "path": "driver_authority"
-                }
-              ]
-            }
-          },
-          {
-            "name": "license_plate_mapping",
-            "writable": true,
-            "pda": {
-              "seeds": [
-                {
-                  "kind": "const",
-                  "value": [
-                    112,
-                    108,
-                    97,
-                    116,
-                    101
-                  ]
-                },
-                {
-                  "kind": "arg",
-                  "path": "license_plate"
-                }
-              ]
-            }
-          },
-          {
-            "name": "driver_authority"
-          },
-          {
-            "name": "platform_account",
-            "writable": true
-          },
-          {
-            "name": "authority",
-            "writable": true,
-            "signer": true,
-            "relations": [
-              "platform_account"
-            ]
-          },
-          {
-            "name": "system_program",
-            "address": "11111111111111111111111111111111"
-          }
-        ],
-        "args": [
-          {
-            "name": "name",
-            "type": "string"
-          },
-          {
-            "name": "license_plate",
-            "type": "string"
-          }
-        ]
-      },
-      {
-        "name": "register_platform",
-        "discriminator": [
-          115,
-          120,
-          8,
-          254,
-          177,
-          20,
-          8,
-          168
-        ],
-        "accounts": [
-          {
-            "name": "platform_account",
-            "writable": true,
-            "pda": {
-              "seeds": [
-                {
-                  "kind": "const",
-                  "value": [
-                    112,
-                    108,
-                    97,
-                    116,
-                    102,
-                    111,
-                    114,
-                    109
-                  ]
-                },
-                {
-                  "kind": "account",
-                  "path": "authority"
-                }
-              ]
-            }
-          },
-          {
-            "name": "authority",
-            "writable": true,
-            "signer": true
-          },
-          {
-            "name": "system_program",
-            "address": "11111111111111111111111111111111"
-          }
-        ],
-        "args": [
-          {
-            "name": "name",
-            "type": "string"
-          }
-        ]
       }
-    ],
-    "accounts": [
-      {
-        "name": "DriverProfile",
-        "discriminator": [
-          116,
-          172,
-          75,
-          50,
-          68,
-          157,
-          48,
-          16
-        ]
-      },
-      {
-        "name": "LicensePlateMapping",
-        "discriminator": [
-          1,
-          2,
-          3,
-          4,
-          5,
-          6,
-          7,
-          8
-        ]
-      },
-      {
-        "name": "Platform",
-        "discriminator": [
-          77,
-          92,
-          204,
-          58,
-          187,
-          98,
-          91,
-          12
-        ]
-      },
-      {
-        "name": "Review",
-        "discriminator": [
-          124,
-          63,
-          203,
-          215,
-          226,
-          30,
-          222,
-          15
-        ]
-      }
-    ],
-    "errors": [
-      {
-        "code": 6000,
-        "name": "RatingOutOfRange",
-        "msg": "Rating must be between 1 and 5."
-      },
-      {
-        "code": 6001,
-        "name": "InvalidPlatformAuthority",
-        "msg": "Invalid platform authority."
-      }
-    ],
-    "types": [
-      {
-        "name": "DriverProfile",
-        "type": {
-          "kind": "struct",
-          "fields": [
-            {
-              "name": "authority",
-              "type": "pubkey"
-            },
-            {
-              "name": "platform",
-              "type": "pubkey"
-            },
-            {
-              "name": "name",
-              "type": "string"
-            },
-            {
-              "name": "license_plate",
-              "type": "string"
-            },
-            {
-              "name": "rating_sum",
-              "type": "u64"
-            },
-            {
-              "name": "review_count",
-              "type": "u64"
-            }
-          ]
-        }
-      },
-      {
-        "name": "LicensePlateMapping",
-        "type": {
-          "kind": "struct",
-          "fields": [
-            {
-              "name": "license_plate",
-              "type": "string"
-            },
-            {
-              "name": "driver_pda",
-              "type": "pubkey"
-            }
-          ]
-        }
-      },
-      {
-        "name": "Platform",
-        "type": {
-          "kind": "struct",
-          "fields": [
-            {
-              "name": "authority",
-              "type": "pubkey"
-            },
-            {
-              "name": "name",
-              "type": "string"
-            },
-            {
-              "name": "verified",
-              "type": "bool"
-            },
-            {
-              "name": "driver_count",
-              "type": "u64"
-            }
-          ]
-        }
-      },
-      {
-        "name": "Review",
-        "type": {
-          "kind": "struct",
-          "fields": [
-            {
-              "name": "driver",
-              "type": "pubkey"
-            },
-            {
-              "name": "reviewer",
-              "type": "pubkey"
-            },
-            {
-              "name": "rating",
-              "type": "u8"
-            },
-            {
-              "name": "message_hash",
-              "type": "string"
-            }
-          ]
-        }
-      }
-    ]
-  }
+    }
+  ]
+}
