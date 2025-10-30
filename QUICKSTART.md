@@ -111,6 +111,8 @@ Return driver info to frontend
 
 ### Build errors
 - Run `npm install --legacy-peer-deps` to handle peer dependency conflicts
+  - Note: The `--legacy-peer-deps` flag is needed due to React 19 compatibility issues with some wallet adapter packages (vaul v0.9.9 expects React 16-18)
+  - This is a temporary workaround until the dependencies are updated upstream
 - Ensure you're using Node.js 18+
 
 ## Next Steps
