@@ -68,12 +68,21 @@ describe("satch", () => {
     console.log("Registering driver at:", driverPDA.toBase58());
     console.log("Driver's wallet:", driver.publicKey.toBase58());
 
+    const licensePlate = "KA-01-1234";
+    
+    // Calculate license plate mapping PDA
+    const [platePDA] = anchor.web3.PublicKey.findProgramAddressSync(
+      [Buffer.from("plate"), Buffer.from(licensePlate)],
+      program.programId
+    );
+
     try {
       // Call the `registerDriver` function
       const tx = await program.methods
-        .registerDriver("Raju") // The driver's name
+        .registerDriver("Raju", licensePlate) // The driver's name and license plate
         .accounts({
           driverAccount: driverPDA,
+          licensePlateMapping: platePDA,
           driverAuthority: driver.publicKey, // The driver's public key
           platformAccount: platformPDA,
           authority: testWallet.publicKey, // The platform's authority (you)
@@ -88,8 +97,15 @@ describe("satch", () => {
 
       // Check if the data is correct
       assert.equal(account.name, "Raju");
+      assert.equal(account.licensePlate, licensePlate);
       assert.ok(account.platform.equals(platformPDA));
-      console.log("✅ Driver 'Raju' successfully registered!");
+      
+      // Verify the license plate mapping
+      const mapping = await program.account.licensePlateMapping.fetch(platePDA);
+      assert.equal(mapping.licensePlate, licensePlate);
+      assert.ok(mapping.driverPda.equals(driverPDA));
+      
+      console.log("✅ Driver 'Raju' successfully registered with license plate!");
     } catch (e) {
       console.error("Failed to register driver:", e);
       assert.fail("Driver registration failed");
