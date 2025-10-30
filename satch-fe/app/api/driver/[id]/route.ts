@@ -1,34 +1,49 @@
 import { NextResponse } from "next/server";
+import { PublicKey } from "@solana/web3.js";
+import { getProgram, findLicensePlatePda, findDriverPda } from "@/lib/solana";
 
-// Simple in-memory mapping from real-world IDs (e.g., license plates)
-// to the on-chain driver authority public keys and display names.
-// TODO: Replace with a real database and admin UI.
-const DRIVER_DIRECTORY: Record<string, { driverPubkey: string; driverName: string }> = {
-  // Example mapping using a placeholder public key from testing/demo
-  // KA-01-1234 → Raju
-  "KA-01-1234": {
-    driverPubkey: "32aC89SmxFds1x5DjKNBjUtfUPKwEriNAQ4w13RGddtU",
-    driverName: "Raju",
-  },
-  // Add more seed entries as needed for demos
-  "DL-05-7788": {
-    driverPubkey: "5xJ6k2Vn3eJmKqDoJzM2JYx5y7vF4m3v7F7s1kB7WQ2Z",
-    driverName: "Suman",
-  },
-};
-
+// This API route now fetches driver information from the blockchain
+// based on the license plate by querying the LicensePlateMapping PDA
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   if (!id) {
     return NextResponse.json({ error: "Missing driver id" }, { status: 400 });
   }
 
-  const record = DRIVER_DIRECTORY[id];
-  if (!record) {
-    return NextResponse.json({ error: "Driver not found" }, { status: 404 });
-  }
+  try {
+    // 1. Get the license plate mapping PDA
+    const platePda = findLicensePlatePda(id);
+    
+    // 2. Fetch the mapping from on-chain
+    const program = getProgram<any>();
+    const mapping = await (program.account as any).licensePlateMapping.fetch(platePda);
+    
+    if (!mapping) {
+      return NextResponse.json({ error: "Driver not found" }, { status: 404 });
+    }
 
-  return NextResponse.json(record, { status: 200 });
+    // 3. Get the driver PDA from the mapping
+    const driverPda = mapping.driverPda as PublicKey;
+    
+    // 4. Fetch the driver profile to get the name
+    const driverProfile = await (program.account as any).driverProfile.fetch(driverPda);
+    
+    // 5. Return the driver information
+    return NextResponse.json(
+      {
+        driverPubkey: driverProfile.authority.toBase58(),
+        driverName: driverProfile.name,
+        licensePlate: driverProfile.licensePlate,
+      },
+      { status: 200 }
+    );
+  } catch (error: any) {
+    console.error("Error fetching driver:", error);
+    return NextResponse.json(
+      { error: "Driver not found or blockchain error" },
+      { status: 404 }
+    );
+  }
 }
 
 

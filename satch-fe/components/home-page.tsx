@@ -3,6 +3,7 @@
 import type React from "react"
 
 import { useState } from "react"
+import Link from "next/link"
 
 interface HomePageProps {
   onSearch: (query: string) => void
@@ -48,6 +49,15 @@ export default function HomePage({ onSearch, isSearching }: HomePageProps) {
             {isSearching ? "SEARCHING..." : "SEARCH"}
           </button>
         </form>
+      </div>
+
+      {/* Company Portal Link */}
+      <div className="mt-8 w-full max-w-2xl">
+        <Link href="/company">
+          <button className="w-full bg-white text-black px-8 py-4 font-mono font-bold text-sm tracking-widest border-2 border-black hover:bg-gray-100 transition-colors">
+            COMPANY PORTAL →
+          </button>
+        </Link>
       </div>
 
       {/* Footer Info */}

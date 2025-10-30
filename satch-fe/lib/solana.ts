@@ -54,6 +54,24 @@ export function findDriverPda(driverAuthority: PublicKey | string): PublicKey {
   return pda;
 }
 
+export function findPlatformPda(platformAuthority: PublicKey | string): PublicKey {
+  const platformAuthorityKey =
+    typeof platformAuthority === "string" ? new PublicKey(platformAuthority) : platformAuthority;
+  const [pda] = PublicKey.findProgramAddressSync(
+    [Buffer.from("platform"), platformAuthorityKey.toBuffer()],
+    PROGRAM_ID
+  );
+  return pda;
+}
+
+export function findLicensePlatePda(licensePlate: string): PublicKey {
+  const [pda] = PublicKey.findProgramAddressSync(
+    [Buffer.from("plate"), Buffer.from(licensePlate)],
+    PROGRAM_ID
+  );
+  return pda;
+}
+
 export function findReviewPda(driverPda: PublicKey, index: number | BN): PublicKey {
   const indexBn = BN.isBN(index) ? index : new BN(index);
   const [pda] = PublicKey.findProgramAddressSync(
