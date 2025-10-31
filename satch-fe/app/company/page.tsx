@@ -11,6 +11,7 @@ import idl from "@/lib/idl/satch.json" assert { type: "json" };
 import { useRouter } from "next/navigation";
 import Header from "@/components/header";
 import bs58 from "bs58";
+import { toast } from "sonner";
 
 export default function CompanyPage() {
   const { ready, authenticated, login, logout } = usePrivy();
@@ -93,7 +94,7 @@ export default function CompanyPage() {
   const handleRegisterCompany = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!authenticated || !selectedWallet) {
-      alert("Please connect your wallet");
+      toast.error("Please connect your wallet");
       return;
     }
     const walletAddress = selectedWallet.address;
@@ -132,18 +133,22 @@ export default function CompanyPage() {
 
       const txSig = bs58.encode(signature);
 
-      alert(`Company registered successfully! Transaction: ${txSig}`);
+      toast.success("Company registered successfully!", {
+        action: {
+          label: "View Transaction",
+          onClick: () => window.open(`https://solscan.io/tx/${txSig}?cluster=devnet`, "_blank"),
+        },
+      });
       
-      // Reload platform data
-      const platformInfo = await connection.getAccountInfo(platformPda);
-      if (platformInfo && platformInfo.data && platformInfo.owner.equals(PROGRAM_ID)) {
-        const platformData: any = coder.accounts.decode("Platform", platformInfo.data);
-        setPlatform(platformData);
-      }
+      // Reload page to show dashboard
+      setTimeout(() => {
+        window.location.reload();
+      }, 1000);
+
       setCompanyName("");
     } catch (error: any) {
       console.error("Error registering company:", error);
-      alert(error?.message || "Failed to register company");
+      toast.error(error?.message || "Failed to register company");
     } finally {
       setIsRegistering(false);
     }
@@ -152,13 +157,13 @@ export default function CompanyPage() {
   const handleAddDriver = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!authenticated || !selectedWallet) {
-      alert("Please connect your wallet");
+      toast.error("Please connect your wallet");
       return;
     }
     const walletAddress = selectedWallet.address;
 
     if (!platform) {
-      alert("Please register your company first");
+      toast.error("Please register your company first");
       return;
     }
 
@@ -206,14 +211,17 @@ export default function CompanyPage() {
 
       const txSig = bs58.encode(signature);
 
-      alert(`Driver registered successfully! Transaction: ${txSig}\nLicense Plate: ${licensePlate}`);
+      toast.success("Driver registered successfully!", {
+        action: {
+          label: "View Transaction",
+          onClick: () => window.open(`https://solscan.io/tx/${txSig}?cluster=devnet`, "_blank"),
+        },
+      });
       
-      // Reload platform data
-      const platformInfo = await connection.getAccountInfo(platformPda);
-      if (platformInfo && platformInfo.data && platformInfo.owner.equals(PROGRAM_ID)) {
-        const platformData: any = coder.accounts.decode("Platform", platformInfo.data);
-        setPlatform(platformData);
-      }
+      // Reload page to show new driver in list
+      setTimeout(() => {
+        window.location.reload();
+      }, 1000);
       
       // Clear form
       setDriverName("");
@@ -221,7 +229,7 @@ export default function CompanyPage() {
       setDriverWallet("");
     } catch (error: any) {
       console.error("Error adding driver:", error);
-      alert(error?.message || "Failed to add driver");
+      toast.error(error?.message || "Failed to add driver");
     } finally {
       setIsAddingDriver(false);
     }
@@ -387,7 +395,7 @@ export default function CompanyPage() {
                           type="button"
                           onClick={() => {
                             navigator.clipboard.writeText(generatedSecret);
-                            alert("Secret key copied to clipboard!");
+                            toast.success("Secret key copied to clipboard!");
                           }}
                           className="w-full mt-2 bg-red-500 text-white px-4 py-2 font-mono font-bold text-xs tracking-widest border-2 border-black hover:bg-red-600"
                         >

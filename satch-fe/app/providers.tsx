@@ -5,6 +5,7 @@ import {
   createSolanaRpc,
   createSolanaRpcSubscriptions
 } from "@solana/kit";
+import { Toaster } from "sonner";
 
 export default function Providers({ children }: { children: React.ReactNode }) {
   const appId = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
@@ -50,6 +51,21 @@ export default function Providers({ children }: { children: React.ReactNode }) {
         }
       }}
     >
+      <Toaster 
+        position="bottom-right"
+        toastOptions={{
+          style: {
+            background: 'white',
+            color: 'black',
+            border: '2px solid black',
+            fontFamily: 'monospace',
+            fontSize: '14px',
+            fontWeight: 'bold',
+            letterSpacing: '0.05em',
+          },
+          className: 'font-mono',
+        }}
+      />
       {children}
     </PrivyProvider>
   );

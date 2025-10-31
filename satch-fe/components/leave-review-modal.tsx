@@ -16,6 +16,7 @@ import { BN, BorshCoder, Idl } from "@coral-xyz/anchor";
 import { getProgramWithWallet, findDriverPda, findReviewPda, getConnection, PROGRAM_ID } from "@/lib/solana";
 import idl from "@/lib/idl/satch.json" assert { type: "json" };
 import bs58 from "bs58";
+import { toast } from "sonner";
 // Remove @solana/kit imports as they are replaced by @solana/web3.js
 /*
 import {
@@ -51,7 +52,7 @@ export default function LeaveReviewModal({ onClose, driverName, driverPubkey }: 
 
   const handleAirdrop = async () => {
     if (!walletAddress) {
-      alert("Please connect your wallet first.");
+      toast.error("Please connect your wallet first.");
       return;
     }
     try {
@@ -60,10 +61,10 @@ export default function LeaveReviewModal({ onClose, driverName, driverPubkey }: 
       const walletPubkey = new PublicKey(walletAddress);
       const signature = await connection.requestAirdrop(walletPubkey, 1 * LAMPORTS_PER_SOL);
       await connection.confirmTransaction(signature, "confirmed");
-      alert("Airdrop of 1 DEVNET SOL successful! You can now submit your review.");
+      toast.success("Airdrop of 1 DEVNET SOL successful!");
     } catch (err) {
       console.error("Airdrop failed", err);
-      alert("Airdrop failed. The devnet faucet may be busy. Please try again in a moment.");
+      toast.error("Airdrop failed. The devnet faucet may be busy.");
     } finally {
       setIsAirdropping(false);
     }
@@ -72,15 +73,15 @@ export default function LeaveReviewModal({ onClose, driverName, driverPubkey }: 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (rating === 0 || !reviewText.trim()) {
-      alert("Please select a rating and write a review");
+      toast.error("Please select a rating and write a review");
       return;
     }
     if (!walletAddress) {
-      alert("Connect your Solana wallet to submit a review");
+      toast.error("Connect your Solana wallet to submit a review");
       return;
     }
     if (!driverPubkey) {
-      alert("Missing driver key; please navigate via the driver's page");
+      toast.error("Missing driver key; please navigate via the driver's page");
       return;
     }
 
@@ -147,11 +148,22 @@ export default function LeaveReviewModal({ onClose, driverName, driverPubkey }: 
       const txSig = bs58.encode(signature);
 
       console.log("[REVIEW] tx success", txSig);
-      alert(`Success! Transaction: ${txSig}`);
+      toast.success("Review submitted successfully!", {
+        action: {
+          label: "View Transaction",
+          onClick: () => window.open(`https://solscan.io/tx/${txSig}?cluster=devnet`, "_blank"),
+        },
+      });
       onClose();
+      
+      // Reload page to show new review
+      setTimeout(() => {
+        window.location.reload();
+      }, 1000);
+      
     } catch (err: any) {
       console.error("[REVIEW] error", err);
-      alert(err?.message || "Failed to submit review");
+      toast.error(err?.message || "Failed to submit review");
     } finally {
       setIsSubmitting(false);
     }
