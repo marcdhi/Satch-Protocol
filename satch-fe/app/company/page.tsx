@@ -316,15 +316,15 @@ export default function CompanyPage() {
                 <div className="space-y-4">
                   {drivers.map((driver) => {
                     const toNum = (v: any): number => v?.toNumber ? v.toNumber() : typeof v === "bigint" ? Number(v) : Number(v ?? 0);
-                    const avgRating = toNum(driver.reviewCount) > 0
-                      ? (toNum(driver.ratingSum) / toNum(driver.reviewCount)).toFixed(2)
+                    const avgRating = toNum(driver.review_count) > 0
+                      ? (toNum(driver.rating_sum) / toNum(driver.review_count)).toFixed(2)
                       : "N/A";
 
                     return (
                       <div key={driver.publicKey.toBase58()} className="border-b-2 border-dashed border-black pb-4 last:border-b-0 last:pb-0">
                         <p className="font-mono text-xs">NAME: <span className="font-bold">{driver.name}</span></p>
                         <p className="font-mono text-xs">WALLET: <span className="font-bold">{driver.authority.toBase58()}</span></p>
-                        <p className="font-mono text-xs">LICENSE: <span className="font-bold">{driver.licensePlate}</span></p>
+                        <p className="font-mono text-xs">LICENSE: <span className="font-bold">{driver.license_plate}</span></p>
                         <p className="font-mono text-xs">AVG RATING: <span className="font-bold">{avgRating}</span></p>
                       </div>
                     );
