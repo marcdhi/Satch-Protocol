@@ -6,6 +6,8 @@
 
 Satch is a decentralized, on-chain reputation system designed for service workers, built on the Solana blockchain. It provides a transparent and immutable platform for customers to leave reviews for service providers, starting with ride-sharing drivers. This project leverages the power of Web3 to create a trust layer for the real world.
 
+## The Problem
+![SATCH — The Trust Layer for the Service Economy  (2)](https://github.com/user-attachments/assets/1e0a3fa1-f285-4d89-a45b-e95dcd8ba514)
 
 ## The Core Idea
 
