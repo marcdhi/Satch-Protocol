@@ -1,6 +1,4 @@
-"use client";
-
-import { Connection, PublicKey, clusterApiUrl } from "@solana/web3.js";
+import { Connection, PublicKey } from "@solana/web3.js";
 import { AnchorProvider, BN, Program, Idl } from "@coral-xyz/anchor";
 import type { Wallet } from "@coral-xyz/anchor";
 import idl from "@/lib/idl/satch.json" assert { type: "json" };
@@ -14,8 +12,7 @@ export const PROGRAM_ID = new PublicKey(
   (idl as any).address || "4D3Lfi2YVgFiqRaiN8SyBxJkob5cnbxHUo86xUtgqNoH"
 );
 
-// Minimal, read-only wallet to satisfy AnchorProvider in the browser.
-// For read ops this is fine; for writes the real wallet adapter must be used.
+// Minimal, read-only wallet to satisfy AnchorProvider in a non-interactive context.
 const readOnlyWallet = {
   publicKey: null,
   signTransaction: async (tx: any) => tx,
@@ -28,22 +25,17 @@ export function getConnection(): Connection {
 
 export function getProvider(): AnchorProvider {
   const connection = getConnection();
-  return new AnchorProvider(connection, readOnlyWallet, {
+  return new AnchorProvider(connection, readOnlyWallet as unknown as Wallet, {
     preflightCommitment: "confirmed",
   });
 }
 
-export function getProgram<T = any>(): Program<T> {
+export function getProgram(): Program {
   const provider = getProvider();
-  return new Program(idl as Idl, PROGRAM_ID, provider) as unknown as Program<T>;
-}
-export function getProgramWithWallet<T = any>(wallet: Wallet): Program<T> {
-  const connection = getConnection();
-  const provider = new AnchorProvider(connection, wallet, { preflightCommitment: "confirmed" });
-  return new Program(idl as Idl, PROGRAM_ID, provider) as unknown as Program<T>;
+  return new (Program as any)(idl as Idl, PROGRAM_ID, provider) as unknown as Program;
 }
 
-// PDA helpers
+// PDA helpers (server-safe)
 export function findDriverPda(driverAuthority: PublicKey | string): PublicKey {
   const driverAuthorityKey =
     typeof driverAuthority === "string" ? new PublicKey(driverAuthority) : driverAuthority;

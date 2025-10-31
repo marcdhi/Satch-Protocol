@@ -68,12 +68,21 @@ describe("satch", () => {
     console.log("Registering driver at:", driverPDA.toBase58());
     console.log("Driver's wallet:", driver.publicKey.toBase58());
 
+    const licensePlate = "GJ-23-2009";
+    
+    // Calculate license plate mapping PDA
+    const [platePDA] = anchor.web3.PublicKey.findProgramAddressSync(
+      [Buffer.from("plate"), Buffer.from(licensePlate)],
+      program.programId
+    );
+
     try {
       // Call the `registerDriver` function
       const tx = await program.methods
-        .registerDriver("Raju") // The driver's name
+        .registerDriver("Satoshi", licensePlate) // The driver's name and license plate
         .accounts({
           driverAccount: driverPDA,
+          licensePlateMapping: platePDA,
           driverAuthority: driver.publicKey, // The driver's public key
           platformAccount: platformPDA,
           authority: testWallet.publicKey, // The platform's authority (you)
@@ -87,9 +96,16 @@ describe("satch", () => {
       const account = await program.account.driverProfile.fetch(driverPDA);
 
       // Check if the data is correct
-      assert.equal(account.name, "Raju");
+      assert.equal(account.name, "Satoshi");
+      assert.equal(account.licensePlate, licensePlate);
       assert.ok(account.platform.equals(platformPDA));
-      console.log("✅ Driver 'Raju' successfully registered!");
+      
+      // Verify the license plate mapping
+      const mapping = await program.account.licensePlateMapping.fetch(platePDA);
+      assert.equal(mapping.licensePlate, licensePlate);
+      assert.ok(mapping.driverPda.equals(driverPDA));
+      
+      console.log("✅ Driver 'Satoshi' successfully registered with license plate!");
     } catch (e) {
       console.error("Failed to register driver:", e);
       assert.fail("Driver registration failed");
@@ -97,8 +113,8 @@ describe("satch", () => {
   });
 
   it("Leaves a review for the driver!", async () => {
-    const rating = 1; // A 1-star rating
-    const messageHash = "FAKE_ARWEAVE_HASH_12345"; // Test hash
+    const rating = 5; // A 5-star rating
+    const message = "Great driver, very fast!"; // The review text
 
     // We need to find the PDA for the *new* review account.
     // This depends on the *current* review_count of the driver.
@@ -124,7 +140,7 @@ describe("satch", () => {
     try {
       // 3. Call the leaveReview function
       const tx = await program.methods
-        .leaveReview(rating, messageHash)
+        .leaveReview(rating, message)
         .accounts({
           reviewAccount: reviewPDA,
           driverAccount: driverPDA,
@@ -140,7 +156,7 @@ describe("satch", () => {
       // Check the review account itself
       const review = await program.account.review.fetch(reviewPDA);
       assert.equal(review.rating, rating);
-      assert.equal(review.messageHash, messageHash);
+      assert.equal(review.message, message);
       assert.ok(review.reviewer.equals(testWallet.publicKey));
       console.log("✅ Review account created and data is correct!");
 
