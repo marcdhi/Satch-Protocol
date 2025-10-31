@@ -15,7 +15,6 @@ import {
 import { BN, BorshCoder, Idl } from "@coral-xyz/anchor";
 import { getProgramWithWallet, findDriverPda, findReviewPda, getConnection, PROGRAM_ID } from "@/lib/solana";
 import idl from "@/lib/idl/satch.json" assert { type: "json" };
-import { uploadToArweave } from "@/lib/arweave";
 import bs58 from "bs58";
 // Remove @solana/kit imports as they are replaced by @solana/web3.js
 /*
@@ -90,16 +89,12 @@ export default function LeaveReviewModal({ onClose, driverName, driverPubkey }: 
 
       console.log("[REVIEW] Start submit", { rating, reviewTextLen: reviewText.length, driverPubkey });
 
-      // 1) Upload review text to Arweave
-      const messageHash = await uploadToArweave(reviewText);
-      console.log("[REVIEW] Arweave messageHash", messageHash);
-
-      // 2) Derive driver PDA
+      // 1) Derive driver PDA
       const driverAuthority = new PublicKey(driverPubkey);
       const driverPda = findDriverPda(driverAuthority);
       console.log("[REVIEW] driverPda", driverPda.toBase58());
 
-      // 3) Fetch driver account to get current review_count
+      // 2) Fetch driver account to get current review_count
       const connection = getConnection();
       const coder = new BorshCoder(idl as Idl);
       const driverInfo = await connection.getAccountInfo(driverPda);
@@ -110,14 +105,14 @@ export default function LeaveReviewModal({ onClose, driverName, driverPubkey }: 
       const currentCount: number = driverAccount.review_count?.toNumber?.() ?? Number(driverAccount.review_count ?? 0);
       console.log("[REVIEW] currentCount", currentCount);
 
-      // 4) Derive new review PDA
+      // 3) Derive new review PDA
       const reviewPda = findReviewPda(driverPda, new BN(currentCount));
       console.log("[REVIEW] reviewPda", reviewPda.toBase58());
 
-      // 5) Build the instruction
+      // 4) Build the instruction
       const instructionData = coder.instruction.encode("leave_review", {
         rating,
-        message_hash: messageHash,
+        message: reviewText,
       });
 
       const walletPubkey = new PublicKey(walletAddress);

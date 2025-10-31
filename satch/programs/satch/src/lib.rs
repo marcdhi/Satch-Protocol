@@ -49,7 +49,7 @@ pub mod satch {
     pub fn leave_review(
         ctx: Context<LeaveReview>,
         rating: u8,
-        message_hash: String,
+        message: String,
     ) -> Result<()> {
         // 1. Validate the rating (1-5)
         require!(rating >= 1 && rating <= 5, SatchError::RatingOutOfRange);
@@ -60,19 +60,12 @@ pub mod satch {
         driver.review_count = driver.review_count.checked_add(1).unwrap();
 
         // 3. Create a new, separate account for this specific review
-        // This is how you store "infinite" data. Each review is a new account.
         let review = &mut ctx.accounts.review_account;
         review.driver = driver.key();
         review.reviewer = ctx.accounts.reviewer.key();
         review.rating = rating;
-        review.message_hash = message_hash; // This is the Arweave TX ID
+        review.message = message; // Store the full review text
 
-        // 4. TODO: Burn the "Proof-of-Service" cNFT
-        // For a hackathon, just having this instruction is the main part.
-        // Burning the cNFT would happen here via a CPI (Cross-Program Invoke)
-        // to the Metaplex Bubblegum program. This is complex, so for the hackathon
-        // you can just focus on the review logic.
-        
         msg!("Review left for driver {}", driver.key());
         Ok(())
     }
@@ -115,7 +108,7 @@ pub struct Review {
     pub driver: Pubkey,       // The driver being reviewed
     pub reviewer: Pubkey,     // The user who left the review
     pub rating: u8,           // 1-5
-    pub message_hash: String, // The Arweave TX ID of the complaint text
+    pub message: String,      // The full review text (max 500 chars)
 }
 
 // === INSTRUCTION CONTEXTS ===
@@ -172,12 +165,12 @@ pub struct RegisterDriver<'info> {
 }
 
 #[derive(Accounts)]
-#[instruction(rating: u8, message_hash: String)]
+#[instruction(rating: u8, message: String)]
 pub struct LeaveReview<'info> {
     #[account(
         init,
         payer = reviewer,
-        space = 8 + 32 + 32 + 1 + (4 + message_hash.len()), // 8 + driver + reviewer + rating + hash
+        space = 8 + 32 + 32 + 1 + (4 + 500), // 8(disc) + driver + reviewer + rating + message(max 500)
         seeds = [b"review", driver_account.key().as_ref(), driver_account.review_count.to_le_bytes().as_ref()],
         bump
     )]

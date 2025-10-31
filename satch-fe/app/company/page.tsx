@@ -1,24 +1,29 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { usePrivy, useWallets } from '@privy-io/react-auth';
-import { PublicKey, SystemProgram, Transaction, TransactionInstruction } from "@solana/web3.js";
+import { usePrivy } from '@privy-io/react-auth';
+import { useWallets } from '@privy-io/react-auth/solana';
+import { useSignAndSendTransaction } from '@privy-io/react-auth/solana';
+import { Keypair, PublicKey, SystemProgram, Transaction, TransactionInstruction } from "@solana/web3.js";
 import { findPlatformPda, findDriverPda, findLicensePlatePda, getConnection, PROGRAM_ID } from "@/lib/solana";
 import { BorshCoder, Idl } from "@coral-xyz/anchor";
 import idl from "@/lib/idl/satch.json" assert { type: "json" };
 import { useRouter } from "next/navigation";
 import Header from "@/components/header";
+import bs58 from "bs58";
 
 export default function CompanyPage() {
   const { ready, authenticated, login, logout } = usePrivy();
   const { wallets } = useWallets();
-  const solanaWallets = wallets.filter(w => w.chainType === 'solana');
-  const selectedWallet = solanaWallets.find(w => w.walletClientType === 'privy') || solanaWallets[0];
+  const { signAndSendTransaction } = useSignAndSendTransaction();
+  
+  const selectedWallet = wallets[0];
   
   const router = useRouter();
   const [platform, setPlatform] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [drivers, setDrivers] = useState<any[]>([]);
 
   // Company registration state
   const [companyName, setCompanyName] = useState("");
@@ -29,6 +34,7 @@ export default function CompanyPage() {
   const [licensePlate, setLicensePlate] = useState("");
   const [driverWallet, setDriverWallet] = useState("");
   const [isAddingDriver, setIsAddingDriver] = useState(false);
+  const [generatedSecret, setGeneratedSecret] = useState<string | null>(null);
 
   useEffect(() => {
     async function loadPlatform() {
@@ -49,6 +55,27 @@ export default function CompanyPage() {
         } else {
           const platformData: any = coder.accounts.decode("Platform", platformInfo.data);
           setPlatform(platformData);
+          
+          // Also fetch drivers for this platform
+          const driverAccounts = await connection.getProgramAccounts(PROGRAM_ID, {
+            filters: [
+              { dataSize: 8 + 32 + 32 + (4 + 32) + (4 + 32) + 8 + 8 }, // Size of DriverProfile
+              { memcmp: { offset: 8 + 32, bytes: platformPda.toBase58() } } // Filter by platform pubkey
+            ]
+          });
+          
+          const decodedDrivers = driverAccounts.map(d => {
+            try {
+              return {
+                publicKey: d.pubkey,
+                ...coder.accounts.decode("DriverProfile", d.account.data)
+              };
+            } catch (e) {
+              return null;
+            }
+          }).filter(Boolean);
+          
+          setDrivers(decodedDrivers);
         }
       } catch (e) {
         // Platform not registered yet
@@ -77,24 +104,33 @@ export default function CompanyPage() {
       const coder = new BorshCoder(idl as Idl);
       const platformPda = findPlatformPda(new PublicKey(walletAddress));
 
+      const instructionData = coder.instruction.encode("register_platform", { name: companyName });
+
+      const walletPubkey = new PublicKey(walletAddress);
+
       const ix = new TransactionInstruction({
         programId: PROGRAM_ID,
         keys: [
           { pubkey: platformPda, isSigner: false, isWritable: true },
-          { pubkey: new PublicKey(walletAddress), isSigner: true, isWritable: true },
+          { pubkey: walletPubkey, isSigner: true, isWritable: true },
           { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
         ],
-        data: coder.instruction.encode("register_platform", { name: companyName }),
+        data: instructionData,
       });
 
-      const tx = new Transaction().add(ix);
-      tx.feePayer = new PublicKey(walletAddress);
       const { blockhash } = await connection.getLatestBlockhash();
-      tx.recentBlockhash = blockhash;
+      const transaction = new Transaction({
+        feePayer: walletPubkey,
+        recentBlockhash: blockhash,
+      }).add(ix);
 
-      const signedTx = await selectedWallet.signTransaction(tx)
-      const txSig = await connection.sendRawTransaction(signedTx.serialize());
+      const { signature } = await signAndSendTransaction({
+        transaction: transaction.serialize({ requireAllSignatures: false }),
+        wallet: selectedWallet,
+        chain: 'solana:devnet',
+      });
 
+      const txSig = bs58.encode(signature);
 
       alert(`Company registered successfully! Transaction: ${txSig}`);
       
@@ -136,6 +172,13 @@ export default function CompanyPage() {
       const platePda = findLicensePlatePda(licensePlate);
       const platformPda = findPlatformPda(new PublicKey(walletAddress));
 
+      const instructionData = coder.instruction.encode("register_driver", { 
+        name: driverName, 
+        license_plate: licensePlate 
+      });
+
+      const walletPubkey = new PublicKey(walletAddress);
+
       const ix = new TransactionInstruction({
         programId: PROGRAM_ID,
         keys: [
@@ -143,22 +186,25 @@ export default function CompanyPage() {
           { pubkey: platePda, isSigner: false, isWritable: true },
           { pubkey: driverAuthority, isSigner: false, isWritable: false },
           { pubkey: platformPda, isSigner: false, isWritable: true },
-          { pubkey: new PublicKey(walletAddress), isSigner: true, isWritable: true },
+          { pubkey: walletPubkey, isSigner: true, isWritable: true },
           { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
         ],
-        data: coder.instruction.encode("register_driver", { 
-          name: driverName, 
-          license_plate: licensePlate 
-        }),
+        data: instructionData,
       });
 
-      const tx = new Transaction().add(ix);
-      tx.feePayer = new PublicKey(walletAddress);
       const { blockhash } = await connection.getLatestBlockhash();
-      tx.recentBlockhash = blockhash;
+      const transaction = new Transaction({
+        feePayer: walletPubkey,
+        recentBlockhash: blockhash,
+      }).add(ix);
 
-      const signedTx = await selectedWallet.signTransaction(tx);
-      const txSig = await connection.sendRawTransaction(signedTx.serialize());
+      const { signature } = await signAndSendTransaction({
+        transaction: transaction.serialize({ requireAllSignatures: false }),
+        wallet: selectedWallet,
+        chain: 'solana:devnet',
+      });
+
+      const txSig = bs58.encode(signature);
 
       alert(`Driver registered successfully! Transaction: ${txSig}\nLicense Plate: ${licensePlate}`);
       
@@ -181,6 +227,12 @@ export default function CompanyPage() {
     }
   };
 
+  const handleGenerateWallet = () => {
+    const newDriver = Keypair.generate();
+    setDriverWallet(newDriver.publicKey.toBase58());
+    setGeneratedSecret(bs58.encode(newDriver.secretKey));
+  };
+
   if (!ready || loading) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center">
@@ -192,7 +244,19 @@ export default function CompanyPage() {
   return (
     <main className="min-h-screen bg-white text-black">
       <Header />
-      {authenticated && selectedWallet && (
+      {!authenticated ? (
+        <div className="max-w-4xl mx-auto px-4 py-8 text-center">
+          <p className="font-mono text-sm text-gray-600">
+            Please connect your wallet to register your company and manage drivers.
+          </p>
+        </div>
+      ) : !selectedWallet ? (
+        <div className="max-w-4xl mx-auto px-4 py-8 text-center">
+          <p className="font-mono text-sm text-gray-600">
+            No Solana wallet found. Please create or connect a Solana wallet in your Privy account.
+          </p>
+        </div>
+      ) : (
         <div className="max-w-4xl mx-auto px-4 py-8">
           {!platform ? (
             // Company Registration Form
@@ -238,6 +302,31 @@ export default function CompanyPage() {
                 </div>
               </div>
 
+              {/* Driver List */}
+              <div className="border-2 border-black p-6">
+                <h2 className="font-mono text-sm font-bold tracking-widest mb-4">REGISTERED DRIVERS ({drivers.length})</h2>
+                <div className="space-y-4">
+                  {drivers.map((driver) => {
+                    const toNum = (v: any): number => v?.toNumber ? v.toNumber() : typeof v === "bigint" ? Number(v) : Number(v ?? 0);
+                    const avgRating = toNum(driver.reviewCount) > 0
+                      ? (toNum(driver.ratingSum) / toNum(driver.reviewCount)).toFixed(2)
+                      : "N/A";
+
+                    return (
+                      <div key={driver.publicKey.toBase58()} className="border-b-2 border-dashed border-black pb-4 last:border-b-0 last:pb-0">
+                        <p className="font-mono text-xs">NAME: <span className="font-bold">{driver.name}</span></p>
+                        <p className="font-mono text-xs">WALLET: <span className="font-bold">{driver.authority.toBase58()}</span></p>
+                        <p className="font-mono text-xs">LICENSE: <span className="font-bold">{driver.licensePlate}</span></p>
+                        <p className="font-mono text-xs">AVG RATING: <span className="font-bold">{avgRating}</span></p>
+                      </div>
+                    );
+                  })}
+                  {drivers.length === 0 && (
+                    <p className="font-mono text-xs text-gray-600">No drivers registered yet.</p>
+                  )}
+                </div>
+              </div>
+
               {/* Add Driver Form */}
               <div className="border-2 border-black p-6">
                 <h2 className="font-mono text-sm font-bold tracking-widest mb-4">ADD NEW DRIVER</h2>
@@ -266,17 +355,46 @@ export default function CompanyPage() {
                   </div>
                   <div>
                     <label className="font-mono text-xs block mb-2">DRIVER WALLET ADDRESS</label>
-                    <input
-                      type="text"
-                      value={driverWallet}
-                      onChange={(e) => setDriverWallet(e.target.value)}
-                      placeholder="e.g., 5xJ6k2Vn3eJmKq..."
-                      className="w-full border-2 border-black px-4 py-2 font-mono text-sm focus:outline-none"
-                      required
-                    />
-                    <p className="font-mono text-xs text-gray-600 mt-1">
-                      This will be the driver's Solana wallet address
-                    </p>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={driverWallet}
+                        onChange={(e) => setDriverWallet(e.target.value)}
+                        placeholder="Click Generate or paste address..."
+                        className="w-full border-2 border-black px-4 py-2 font-mono text-sm focus:outline-none"
+                        required
+                      />
+                      <button
+                        type="button"
+                        onClick={handleGenerateWallet}
+                        className="bg-gray-200 text-black px-4 py-2 font-mono font-bold text-sm tracking-widest border-2 border-black hover:bg-gray-300"
+                      >
+                        GENERATE
+                      </button>
+                    </div>
+                    {generatedSecret && (
+                      <div className="mt-4 p-4 bg-red-100 border-2 border-red-500">
+                        <p className="font-mono text-xs text-red-700 font-bold mb-2">
+                          ⚠️ IMPORTANT: Save this secret key and give it to the driver. It will not be shown again.
+                        </p>
+                        <input
+                          type="text"
+                          readOnly
+                          value={generatedSecret}
+                          className="w-full border-2 border-red-500 bg-white px-4 py-2 font-mono text-xs"
+                        />
+                         <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(generatedSecret);
+                            alert("Secret key copied to clipboard!");
+                          }}
+                          className="w-full mt-2 bg-red-500 text-white px-4 py-2 font-mono font-bold text-xs tracking-widest border-2 border-black hover:bg-red-600"
+                        >
+                          COPY SECRET KEY
+                        </button>
+                      </div>
+                    )}
                   </div>
                   <button
                     type="submit"
@@ -289,14 +407,6 @@ export default function CompanyPage() {
               </div>
             </div>
           )}
-        </div>
-      )}
-
-      {!authenticated && (
-        <div className="max-w-4xl mx-auto px-4 py-8 text-center">
-          <p className="font-mono text-sm text-gray-600">
-            Please connect your wallet to register your company and manage drivers.
-          </p>
         </div>
       )}
     </main>

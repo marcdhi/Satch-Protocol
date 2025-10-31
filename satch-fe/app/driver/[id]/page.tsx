@@ -9,6 +9,7 @@ import LeaveReviewModal from "@/components/leave-review-modal";
 import { useParams } from "next/navigation";
 import Header from "@/components/header";
 import { usePrivy } from "@privy-io/react-auth";
+import { Star, MessageSquare, Hash } from "lucide-react";
 
 type DriverApiResponse = { driverPubkey: string; driverName: string };
 
@@ -65,11 +66,7 @@ export default function DriverPage() {
           }
         });
         if (cancelled) return;
-        setReviews(
-          all
-            .filter((r: any) => r.account)
-            .map((r: any) => ({ pubkey: r.publicKey, ...r.account, messageHash: r.account.message_hash }))
-        );
+        setReviews(all.filter((r: any) => r.account));
       } catch (e: any) {
         if (!cancelled) setError(e.message || "Failed to load driver");
       } finally {
@@ -95,78 +92,103 @@ export default function DriverPage() {
       : "0.00";
 
   return (
-    <main className="min-h-screen bg-white text-black">
+    <main className="min-h-screen bg-gray-50 text-black">
       <Header />
-      <div className="border-b-2 border-black">
-        <div className="max-w-4xl mx-auto px-4 py-6">
+      <div className="max-w-6xl mx-auto p-4 md:p-8">
+        {/* Page Header */}
+        <div className="mb-8">
           <h1 className="font-press-start text-3xl md:text-4xl font-bold mb-2">
             {apiData.driverName}
           </h1>
-          <p className="font-mono text-sm text-gray-700">
-            DRIVER AUTHORITY: <span className="font-bold">{apiData.driverPubkey}</span>
+          <p className="font-mono text-xs text-gray-600 truncate">
+            DRIVER WALLET: <span className="font-bold">{apiData.driverPubkey}</span>
           </p>
         </div>
-      </div>
 
-      <div className="border-b-2 border-black">
-        <div className="max-w-4xl mx-auto px-4 py-8 grid grid-cols-3 gap-4">
-          <div className="border-2 border-black p-6 text-center">
-            <p className="font-mono text-xs text-gray-600 mb-2 tracking-widest">AVERAGE RATING</p>
-            <p className="font-press-start text-2xl md:text-3xl mb-2">{avg}</p>
-          </div>
-          <div className="border-2 border-black p-6 text-center">
-            <p className="font-mono text-xs text-gray-600 mb-2 tracking-widest">TOTAL REVIEWS</p>
-            <p className="font-press-start text-2xl md:text-3xl">{toNum(driverProfile.review_count)}</p>
-          </div>
-          <div className="border-2 border-black p-6 text-center">
-            <p className="font-mono text-xs text-gray-600 mb-2 tracking-widest">RATING SUM</p>
-            <p className="font-press-start text-2xl md:text-3xl">{toNum(driverProfile.rating_sum)}</p>
-          </div>
-        </div>
-        <div className="max-w-4xl mx-auto px-4 pb-8">
-          <button
-            onClick={() => setShowReviewModal(true)}
-            disabled={!ready || !authenticated}
-            className="w-full bg-yellow-300 text-black px-8 py-4 font-mono font-bold text-sm tracking-widest border-2 border-black hover:bg-yellow-400 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
-          >
-            LEAVE A REVIEW
-          </button>
-          {!authenticated && (
-            <p className="text-center text-xs font-mono mt-2 text-gray-600">
-              Please connect your wallet to leave a review.
-            </p>
-          )}
-        </div>
-      </div>
-
-      <div className="max-w-4xl mx-auto px-4 py-8">
-        <h2 className="font-mono text-sm font-bold tracking-widest mb-6 text-gray-700">
-          REVIEW LEDGER ({reviews.length})
-        </h2>
-        <div className="space-y-4">
-          {reviews.map((r: any, idx: number) => (
-            <div key={r.pubkey.toBase58?.() || idx} className="border-2 border-black p-6">
-              <div className="flex items-center justify-between mb-3">
-                <div className="text-yellow-500 text-lg">{"★".repeat(r.rating)}{"☆".repeat(5 - r.rating)}</div>
-              </div>
-              <p className="text-black mb-4 leading-relaxed">
-                Message Hash: {r.messageHash}
-              </p>
-              <div className="flex items-center justify-between">
-                <p className="font-mono text-xs text-gray-600">
-                  BY: <span className="font-bold">{r.reviewer.toBase58?.() || String(r.reviewer)}</span>
-                </p>
-                <a
-                  href={`https://arweave.net/${r.messageHash}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-1 text-black hover:opacity-70 transition-opacity border border-black px-3 py-1 font-mono text-xs"
-                >
-                  ARWEAVE
-                </a>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+          {/* Left Column: Stats & Actions */}
+          <div className="md:col-span-1 space-y-6">
+            <div className="bg-white border-2 border-black p-6">
+              <h2 className="font-mono text-sm font-bold tracking-widest mb-4">STATS</h2>
+              <div className="space-y-4">
+                <div className="flex items-center gap-4">
+                  <Star className="w-8 h-8 text-yellow-500" />
+                  <div>
+                    <p className="font-mono text-xs text-gray-600 tracking-widest">AVG RATING</p>
+                    <p className="font-press-start text-2xl">{avg}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-4">
+                  <MessageSquare className="w-8 h-8 text-blue-500" />
+                  <div>
+                    <p className="font-mono text-xs text-gray-600 tracking-widest">TOTAL REVIEWS</p>
+                    <p className="font-press-start text-2xl">{toNum(driverProfile.review_count)}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-4">
+                  <Hash className="w-8 h-8 text-green-500" />
+                  <div>
+                    <p className="font-mono text-xs text-gray-600 tracking-widest">RATING SUM</p>
+                    <p className="font-press-start text-2xl">{toNum(driverProfile.rating_sum)}</p>
+                  </div>
+                </div>
               </div>
             </div>
-          ))}
+            
+            <div className="bg-white border-2 border-black p-6">
+               <h2 className="font-mono text-sm font-bold tracking-widest mb-4">ACTIONS</h2>
+              <button
+                onClick={() => setShowReviewModal(true)}
+                disabled={!ready || !authenticated}
+                className="w-full bg-yellow-300 text-black px-8 py-4 font-mono font-bold text-sm tracking-widest border-2 border-black hover:bg-yellow-400 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
+              >
+                LEAVE A REVIEW
+              </button>
+              {!authenticated && (
+                <p className="text-center text-xs font-mono mt-2 text-gray-600">
+                  Connect wallet to review.
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Right Column: Review Ledger */}
+          <div className="md:col-span-2">
+             <h2 className="font-mono text-sm font-bold tracking-widest mb-4 text-gray-700">
+              REVIEW LEDGER ({reviews.length})
+            </h2>
+            <div className="space-y-4">
+              {reviews.map((r: any, idx: number) => (
+                <div key={r.publicKey.toBase58?.() || idx} className="bg-white border-2 border-black p-6">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="text-yellow-500 text-lg">
+                      {"★".repeat(r.account.rating)}
+                      {"☆".repeat(5 - r.account.rating)}
+                    </div>
+                  </div>
+                  <p className="text-black mb-4 leading-relaxed whitespace-pre-wrap">{r.account.message}</p>
+                  <div className="border-t-2 border-dashed border-black pt-3 flex items-center justify-between">
+                    <p className="font-mono text-xs text-gray-600 truncate">
+                      BY: <span className="font-bold">{r.account.reviewer.toBase58?.() || String(r.account.reviewer)}</span>
+                    </p>
+                    <a
+                      href={`https://solscan.io/account/${r.publicKey.toBase58()}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1 text-black hover:opacity-70 transition-opacity border border-black px-3 py-1 font-mono text-xs"
+                    >
+                      SOLANA
+                    </a>
+                  </div>
+                </div>
+              ))}
+              {reviews.length === 0 && (
+                <div className="bg-white border-2 border-black p-6 text-center">
+                  <p className="font-mono text-sm text-gray-600">No reviews yet. Be the first!</p>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 
