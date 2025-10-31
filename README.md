@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="./satch-fe/public/placeholder-logo.svg" alt="Satch Logo" width="150">
+  <img src="https://github.com/user-attachments/assets/2c61d190-a31a-4204-8e67-b9b97b10013d" alt="Satch Logo" width="150">
 </div>
 
 # Satch: Permanent, Public Accountability
@@ -72,16 +72,15 @@ The frontend is a modern web application that provides a user-friendly interface
 *   **Modern UX:** The application features a clean, retro-inspired UI with modern UX touches like toast notifications instead of disruptive alerts.
 
 ### Project Screenshots
-
 *A collection of screenshots showcasing the application's user interface.*
 
 | Company Portal                               | Driver Page                                |
 | -------------------------------------------- | ------------------------------------------ |
-| ![Company Portal](<./path/to/your/shot1.png>) | ![Driver Page](<./path/to/your/shot2.png>) |
+| ![Company Portal](https://github.com/user-attachments/assets/60401aa3-89ad-4380-83c2-4921c34888ef) | ![Driver Page](https://github.com/user-attachments/assets/0ca8e5bf-91a8-4c2e-80d3-51ac3ec2406b) |
 
-| Leave Review Modal                             | Success Notification                             |
+| Leave Review Modal                             | Home Page                             |
 | ---------------------------------------------- | ------------------------------------------------ |
-| ![Review Modal](<./path/to/your/shot3.png>)     | ![Success Toast](<./path/to/your/shot4.png>)     |
+| ![Review Modal](https://github.com/user-attachments/assets/3807e5d4-fefd-4357-878c-e6a7a4c99a45)     | ![Home Page](https://github.com/user-attachments/assets/1c6498b6-f827-49ca-8902-fda01b824b81)     |
 
 ---
 
