@@ -4,12 +4,21 @@ import type React from "react";
 import { useState } from "react";
 import { X } from "lucide-react";
 import { useWallets, useSignAndSendTransaction } from "@privy-io/react-auth/solana";
-import { PublicKey, SystemProgram, LAMPORTS_PER_SOL } from "@solana/web3.js";
+import {
+  PublicKey,
+  SystemProgram,
+  LAMPORTS_PER_SOL,
+  Transaction,
+  TransactionInstruction,
+  sendAndConfirmTransaction,
+} from "@solana/web3.js";
 import { BN, BorshCoder, Idl } from "@coral-xyz/anchor";
 import { getProgramWithWallet, findDriverPda, findReviewPda, getConnection, PROGRAM_ID } from "@/lib/solana";
 import idl from "@/lib/idl/satch.json" assert { type: "json" };
 import { uploadToArweave } from "@/lib/arweave";
 import bs58 from "bs58";
+// Remove @solana/kit imports as they are replaced by @solana/web3.js
+/*
 import {
   pipe,
   createTransactionMessage,
@@ -21,6 +30,7 @@ import {
   getTransactionEncoder,
   createSolanaRpc
 } from "@solana/kit";
+*/
 
 interface LeaveReviewModalProps {
   onClose: () => void;
@@ -112,44 +122,33 @@ export default function LeaveReviewModal({ onClose, driverName, driverPubkey }: 
 
       const walletPubkey = new PublicKey(walletAddress);
 
-      const ix = {
-        programAddress: PROGRAM_ID,
-        accounts: [
-          { address: reviewPda, role: "write" },
-          { address: driverPda, role: "write" },
-          { address: walletPubkey, role: "write-signer" },
-          { address: SystemProgram.programId, role: "read" },
+      const ix = new TransactionInstruction({
+        programId: PROGRAM_ID,
+        keys: [
+          { pubkey: reviewPda, isSigner: false, isWritable: true },
+          { pubkey: driverPda, isSigner: false, isWritable: true },
+          { pubkey: walletPubkey, isSigner: true, isWritable: true },
+          { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
         ],
         data: instructionData,
-      };
+      });
 
-      console.log("[REVIEW] building tx with @solana/kit...");
+      console.log("[REVIEW] building tx with @solana/web3.js...");
 
-      const {getLatestBlockhash} = createSolanaRpc('https://normals-solanad-6ba0.devnet.rpcpool.com/aeafc746-238d-4bea-af16-6b69e62a4eab');
-      const {value: latestBlockhash} = await getLatestBlockhash().send();
-      
-      const transaction = pipe(
-        createTransactionMessage({ version: 0 }),
-        (tx) => setTransactionMessageFeePayer(address(walletAddress), tx),
-        (tx) => setTransactionMessageLifetimeUsingBlockhash(latestBlockhash, tx),
-        (tx) => appendTransactionMessageInstructions([ix], tx),
-        (tx) => compileTransaction(tx),
-        (tx) => new Uint8Array(getTransactionEncoder().encode(tx))
-      );
+      const { blockhash } = await connection.getLatestBlockhash();
+      const transaction = new Transaction({
+        feePayer: walletPubkey,
+        recentBlockhash: blockhash,
+      }).add(ix);
 
       console.log("[REVIEW] signing and sending transaction...");
 
       const { signature } = await signAndSendTransaction({
-        transaction: transaction,
+        transaction: transaction.serialize({ requireAllSignatures: false }),
         wallet: selectedWallet,
         chain: 'solana:devnet',
-        options: {
-          uiOptions: {
-            title: "Sign Review Transaction",
-          },
-        },
       });
-      
+
       const txSig = bs58.encode(signature);
 
       console.log("[REVIEW] tx success", txSig);
